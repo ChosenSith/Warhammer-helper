@@ -1,0 +1,49 @@
+# Unity — évite de versionner Library, caches et builds si un dépôt Git est initialisé à la racine du projet par erreur.
+# Le helper web vit dans web/ (dépôt GitHub séparé).
+
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# MemoryCaptures peut être volumineux
+/[Mm]emoryCaptures/
+
+# Asset meta merge
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Gradle (Android)
+.gradle/
+*.apk
+*.aab
+
+# IntelliJ / Rider
+.idea/
+*.sln.iml
+
+# Visual Studio / VS Code (optionnel — décommenter si tu ne veux pas committer les configs locales)
+# .vscode/
+
+# Crash reports
+sysinfo.txt
+*.stacktrace
+
+# Packed Addressables
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+
+# Autoconnected profiler
+*.unitypackage
+
+# Plastic SCM
+.plastic/
+
+# Node (PartyKit dans party/)
+party/node_modules/
+
+# Burst / incremental compiler
+*.burst*

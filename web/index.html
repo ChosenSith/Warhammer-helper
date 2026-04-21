@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AoS — Lames de Khorne (helper)</title>
+  <!-- Répertoire de la page (évite ./game-app.js → mauvaise racine si l’URL n’a pas de slash final, ex. GitHub Pages). -->
+  <script>
+    (function () {
+      var u = new URL(location.href);
+      var p = u.pathname;
+      if (/\.html$/i.test(p)) {
+        u.pathname = p.replace(/[^/]+$/, "");
+      } else if (p.length > 0 && !p.endsWith("/")) {
+        u.pathname += "/";
+      }
+      var b = document.createElement("base");
+      b.href = u.href;
+      document.head.appendChild(b);
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="view-setup" class="app">
+    <header class="header">
+      <h1 id="setup-main-title">Warhammer — préparation</h1>
+      <p class="tagline" id="setup-tagline">Choisis ta faction, puis compose ta liste et lance la partie.</p>
+    </header>
+
+    <section class="panel setup-faction-panel">
+      <h2>Faction</h2>
+      <p class="hint small">Choisis ton armée : <strong>Seigneurs Ruinemânes</strong> (Soulblight), <strong>Peaux-Vertes</strong> (Mâchefers) ou <strong>Lames de Khorne</strong> — chaque faction a son catalogue, ses formations et ses rappels en partie.</p>
+      <form class="setup-faction-form" autocomplete="off" onsubmit="return false;">
+        <!-- Rempli aussi par game-app.js ; présent dans le HTML pour l’affichage si le module JS échoue (file://, etc.). -->
+        <div id="setup-factions" class="radio-list">
+          <label class="radio-line">
+            <input type="radio" name="faction" value="vampires" />
+            Seigneurs Ruinemânes (Soulblight)
+          </label>
+          <label class="radio-line">
+            <input type="radio" name="faction" value="peaux_vertes" />
+            Les Peaux-Vertes (Mâchefers)
+          </label>
+          <label class="radio-line">
+            <input type="radio" name="faction" value="khorne" />
+            Lames de Khorne
+          </label>
+        </div>
+      </form>
+      <p id="setup-js-error" class="panel error-panel" hidden>
+        <strong>Le catalogue ne peut pas se charger.</strong> <span id="setup-js-error-detail">En ouvrant la page en double-clic (<code>file://</code>), le navigateur bloque souvent les modules JavaScript.
+        Lance un petit serveur dans le dossier <code>web</code> puis ouvre <code>http://localhost:8080</code> — par exemple sous Windows : double-clique <code>run-server.cmd</code>, ou dans PowerShell : <code>cd web</code> puis <code>python -m http.server 8080</code>.</span>
+      </p>
+      <p id="setup-faction-detail" class="muted small setup-faction-detail"></p>
+      <p class="setup-global-actions">
+        <button type="button" class="btn secondary small" id="btn-reset-save">Effacer la sauvegarde</button>
+      </p>
+    </section>
+
+    <div id="setup-post-faction" class="setup-post-faction" hidden>
+    <section class="panel">
+      <label class="field">
+        <span>Nom de l’armée</span>
+        <input type="text" id="setup-army-name" placeholder="ex. Horde de sang" autocomplete="off" />
+      </label>
+    </section>
+
+    <section class="panel" id="setup-army-presets-panel">
+      <h2>Listes enregistrées</h2>
+      <p class="hint small">Enregistre la composition actuelle (faction, unités, formations, traits) dans le navigateur pour la recharger plus tard.</p>
+      <div class="row-add preset-toolbar">
+        <input type="text" id="setup-preset-label" placeholder="Nom de la sauvegarde" maxlength="80" autocomplete="off" />
+        <button type="button" class="btn" id="btn-preset-save">Enregistrer la liste</button>
+      </div>
+      <div class="row-add preset-toolbar">
+        <select id="setup-preset-select" aria-label="Liste enregistrée">
+          <option value="">— Choisir une liste —</option>
+        </select>
+        <button type="button" class="btn secondary" id="btn-preset-load" disabled>Charger</button>
+        <button type="button" class="btn secondary" id="btn-preset-delete" disabled title="Supprimer la sauvegarde sélectionnée">Supprimer</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Unités</h2>
+      </div>
+      <p id="setup-units-hint" class="hint">Choisis une unité dans la liste puis clique « Ajouter », ou <strong>Tout ajouter</strong> pour une entrée par type du catalogue. Tu peux aussi prendre plusieurs fois la même unité.</p>
+      <div class="row-add">
+        <select id="setup-unit-picker">
+          <option value="">Chargement du catalogue…</option>
+        </select>
+        <button type="button" class="btn" id="btn-add-unit">Ajouter</button>
+        <button type="button" class="btn secondary" id="btn-add-all-units" title="Ajoute une entrée pour chaque unité du catalogue">Tout ajouter</button>
+      </div>
+      <div id="setup-instance-list" class="instance-list"></div>
+    </section>
+
+    <section class="panel setup-army-powers" id="setup-battle-table">
+      <h2>Table</h2>
+      <label class="field">
+        <span>Unités sur la table (total des deux armées)</span>
+        <input type="number" id="setup-total-game-units" min="1" step="1" value="24" title="Compteur global de pertes / Trempés de sang (Khorne)." />
+      </label>
+      <p id="setup-trempes-hint" class="hint small" hidden>Khorne — seuil <strong>Trempés de sang</strong> : moitié de ce total en unités détruites (toute la table).</p>
+      <div class="field">
+        <span>Premier tour après le déploiement</span>
+        <div id="setup-who-starts" class="radio-list">
+          <label class="radio-line"><input type="radio" name="who-starts" value="player" checked /> Moi (tour ami)</label>
+          <label class="radio-line"><input type="radio" name="who-starts" value="opponent" /> Adversaire (tour ennemi)</label>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="setup-multiplayer">
+      <h2>Salon &amp; équipes</h2>
+      <p class="hint small">Chaque joueur garde son écran habituel (ses unités, ses phases). Ici tu prépares le <strong>salon</strong> et ton <strong>équipe</strong> (1 à 10) : plusieurs joueurs peuvent partager le même numéro. La connexion temps réel (PartyKit) relaie les snapshots entre clients.</p>
+      <label class="field">
+        <span>Pseudo / nom</span>
+        <input type="text" id="setup-player-name" maxlength="40" autocomplete="nickname" placeholder="ex. affiché dans le salon" />
+      </label>
+      <label class="field">
+        <span>Code salon</span>
+        <input type="text" id="setup-room-code" maxlength="32" autocomplete="off" spellcheck="false" placeholder="ex. KHORNE-42 — à partager" />
+      </label>
+      <div class="field">
+        <span>Rôle</span>
+        <div id="setup-room-role" class="radio-list">
+          <label class="radio-line"><input type="radio" name="room-role" value="solo" checked /> Local (pas de salon)</label>
+          <label class="radio-line"><input type="radio" name="room-role" value="host" /> Créer / héberger le salon</label>
+          <label class="radio-line"><input type="radio" name="room-role" value="guest" /> Rejoindre un salon</label>
+        </div>
+      </div>
+      <label class="field">
+        <span>Mon équipe</span>
+        <select id="setup-team-id" class="full-width" aria-label="Numéro d’équipe (1 à 10)" title="Plusieurs joueurs peuvent partager le même numéro"></select>
+      </label>
+      <label class="field">
+        <span>Hôte PartyKit</span>
+        <input type="text" id="setup-partykit-host" maxlength="120" autocomplete="off" spellcheck="false" placeholder="warhammer-helper-party.chosensith.partykit.dev" title="Sans https:// — déployé via npm run deploy dans le dossier party/" />
+      </label>
+      <p id="setup-partykit-status" class="hint small" aria-live="polite"></p>
+      <p class="setup-global-actions">
+        <button type="button" class="btn secondary" id="btn-partykit-connect" disabled>Connexion au salon</button>
+      </p>
+    </section>
+
+    <section id="setup-khorne-powers" class="panel setup-army-powers">
+      <h2>Formation de bataille</h2>
+      <div id="setup-formations" class="radio-list"></div>
+    </section>
+
+    <section id="setup-khorne-heroes" class="panel grid-2 setup-army-powers">
+      <p class="hint small setup-hero-upgrade-hint">Les personnages <strong>uniques</strong> (mot-clé UNIQUE sur la charte) ne peuvent pas recevoir de trait héroïque ni d’artefact. Seuls les <strong>héros non uniques</strong> de ta liste apparaissent sous « Porté par ».</p>
+      <div>
+        <h2 id="setup-heading-trait">Trait héroïque</h2>
+        <select id="setup-trait" class="full-width"></select>
+        <label class="field">
+          <span>Porté par</span>
+          <select id="setup-trait-hero"></select>
+        </label>
+      </div>
+      <div>
+        <h2 id="setup-heading-artifact">Artefact</h2>
+        <select id="setup-artifact" class="full-width"></select>
+        <label class="field">
+          <span>Porté par</span>
+          <select id="setup-artifact-hero"></select>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel setup-army-recap-panel setup-army-powers" id="setup-army-recap">
+      <h2 id="setup-army-recap-title">Résumé — formations, traits, artefacts</h2>
+      <p id="setup-army-recap-hint" class="hint small">Textes de synthèse pour t’aider à choisir (phases et conditions : voir règles et warscrolls).</p>
+      <div id="setup-army-recap-body" class="setup-army-recap-body"></div>
+    </section>
+
+    <div class="actions-bar">
+      <button type="button" class="btn" id="btn-start-battle">Lancer la partie</button>
+    </div>
+    </div>
+  </div>
+
+  <div id="view-battle" class="app battle-layout" hidden>
+    <header class="battle-top">
+      <div>
+        <h1 id="battle-title">Partie</h1>
+        <p class="meta-line">
+          Manche <strong id="battle-round">1</strong> ·
+          Tour <strong id="battle-side" class="battle-side mine">ami</strong> ·
+          <span id="battle-phase">Phase</span>
+        </p>
+      </div>
+      <button type="button" class="btn secondary" id="btn-exit-battle">Quitter</button>
+    </header>
+
+    <div class="battle-stage">
+      <nav class="battle-rail battle-rail--start" aria-label="Unités, ennemis et règles PC">
+        <button type="button" class="rail-btn" id="btn-drawer-units" title="Tes unités — ouvrir ou fermer" aria-expanded="false" aria-controls="drawer-units">Unités</button>
+        <button type="button" class="rail-btn" id="btn-drawer-enemy" title="Unités adversaires (PV &amp; aptitudes) — ouvrir ou fermer" aria-expanded="false" aria-controls="drawer-enemy">Ennemis</button>
+        <button type="button" class="rail-btn" id="btn-drawer-pc" title="Points de commandement et aptitudes générales — ouvrir ou fermer" aria-expanded="false" aria-controls="drawer-pc">PC</button>
+      </nav>
+      <main class="phase-main">
+        <div id="phase-content" class="phase-content"></div>
+      </main>
+      <nav id="battle-rail-tithe" class="battle-rail battle-rail--end battle-footer-khorne-only" aria-label="Dîme de sang">
+        <button type="button" class="rail-btn" id="btn-drawer-tithe" title="Dîme de sang — ouvrir ou fermer" aria-expanded="false" aria-controls="drawer-tithe">Dîme</button>
+      </nav>
+    </div>
+
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden aria-hidden="true"></div>
+
+    <div id="drawer-enemy" class="drawer drawer--enemy" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-enemy-title">
+      <div class="drawer-head">
+        <h2 id="drawer-enemy-title">Unités ennemies</h2>
+        <button type="button" class="btn icon" id="btn-close-drawer-enemy" title="Fermer le panneau">×</button>
+      </div>
+      <div class="drawer-scroll">
+        <p class="muted small drawer-hint" id="enemy-drawer-hint">PV et aptitudes des unités de l’équipe adverse (synchronisées par le salon). En attendant, tu peux charger un exemple pour tester l’affichage.</p>
+        <p class="enemy-demo-row"><button type="button" class="btn small secondary" id="btn-enemy-demo">Exemple local (aperçu)</button></p>
+        <div id="enemy-sidebar" class="sidebar-buttons"></div>
+        <aside id="enemy-detail-panel" class="detail-panel detail-panel--in-drawer" hidden>
+          <button type="button" class="btn icon close-btn" id="btn-close-enemy-detail" title="Fermer">×</button>
+          <h2 id="enemy-detail-title">Unité adverse</h2>
+          <div id="enemy-detail-body"></div>
+        </aside>
+      </div>
+    </div>
+
+    <div id="drawer-units" class="drawer drawer--units" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-units-title">
+      <div class="drawer-head">
+        <h2 id="drawer-units-title">Unités</h2>
+        <button type="button" class="btn icon" id="btn-close-drawer-units" title="Fermer le panneau">×</button>
+      </div>
+      <div class="drawer-scroll">
+        <p class="muted small drawer-hint">Sélectionne une unité pour afficher sa fiche complète.</p>
+        <div id="unit-sidebar" class="sidebar-buttons"></div>
+
+        <div id="prayer-apply-section" class="panel-inner" hidden>
+          <h3>Prières (prêtre)</h3>
+          <label class="field"><span>Prêtre</span>
+            <select id="prayer-caster" class="full-width"></select>
+          </label>
+          <select id="prayer-select" class="full-width"></select>
+          <label class="field"><span id="prayer-target-label">Cible</span>
+            <select id="prayer-target" class="full-width"></select>
+          </label>
+          <p id="prayer-hint" class="hint small"></p>
+          <label id="prayer-convocation-wrap" class="field prayer-convocation-wrap" hidden>
+            <input type="checkbox" id="prayer-convocation-success" />
+            <span>Récitation réussie — placer l’invocation (ajoutée au suivi des unités)</span>
+          </label>
+          <button type="button" class="btn small" id="btn-apply-prayer">Appliquer la prière</button>
+        </div>
+
+        <aside id="detail-panel" class="detail-panel detail-panel--in-drawer" hidden>
+          <button type="button" class="btn icon close-btn" id="btn-close-detail" title="Fermer la fiche">×</button>
+          <h2 id="detail-title">Unité</h2>
+          <div id="detail-body"></div>
+
+          <div id="buff-manual-section" class="panel-inner">
+            <h3>Ajouter un buff manuel (pour ce tour)</h3>
+            <p class="hint">Valeurs : bonus positif = meilleur jet (réduit le seuil pour toucher / blesser / sauvegarde). Perforant : +1 = meilleur perforant.</p>
+            <div class="buff-grid">
+              <label>Toucher <input type="number" id="buff-hit" value="0" step="1" /></label>
+              <label>Blesser <input type="number" id="buff-wound" value="0" step="1" /></label>
+              <label>Sauvegarde <input type="number" id="buff-save" value="0" step="1" /></label>
+              <label>Perforant <input type="number" id="buff-rend" value="0" step="1" /></label>
+            </div>
+            <input type="text" id="buff-label" class="full-width" placeholder="Libellé (ex. Rage de Khorne)" />
+            <button type="button" class="btn small" id="btn-apply-buff">Appliquer au profil</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div id="drawer-pc" class="drawer drawer--pc" hidden role="dialog" aria-modal="false" aria-labelledby="drawer-pc-title">
+      <div class="drawer-head">
+        <h2 id="drawer-pc-title">PC &amp; règles générales</h2>
+        <button type="button" class="btn icon" id="btn-close-drawer-pc" title="Fermer le panneau">×</button>
+      </div>
+      <div class="drawer-scroll" id="pc-drawer-body"></div>
+    </div>
+
+    <div id="drawer-tithe" class="drawer drawer--tithe" hidden role="dialog" aria-modal="false" aria-labelledby="drawer-tithe-title">
+      <div class="drawer-head">
+        <h2 id="drawer-tithe-title">Dîme de sang</h2>
+        <button type="button" class="btn icon" id="btn-close-drawer-tithe" title="Fermer le panneau">×</button>
+      </div>
+      <div class="drawer-scroll" id="tithe-drawer-body"></div>
+    </div>
+
+    <footer class="battle-bar" role="contentinfo">
+      <div class="battle-bar-counters">
+        <span class="bc-group" title="Points de commandement">
+          <span class="bc-label">PC</span>
+          <strong id="battle-cp">4 / 4</strong>
+          <button type="button" class="btn tiny" id="btn-cp-minus" title="-1 PC">−</button>
+          <button type="button" class="btn tiny" id="btn-cp-plus" title="+1 PC">+</button>
+        </span>
+        <span id="battle-footer-khorne-pack" class="battle-footer-khorne-pack">
+          <span class="bc-sep" aria-hidden="true">·</span>
+          <span class="bc-group" title="Points de dîme (Lames de Khorne)">
+            <span class="bc-label">Dîme</span>
+            <strong id="blood-tithe">0</strong>
+            <button type="button" class="btn tiny secondary" id="btn-tithe-minus" title="-1 dîme">−</button>
+            <button type="button" class="btn tiny secondary" id="btn-tithe-plus" title="+1 dîme">+</button>
+          </span>
+        </span>
+        <span class="bc-sep battle-sep-before-dead" aria-hidden="true">·</span>
+        <span class="bc-group" title="Unités détruites au total (table) / unités prévues dans la partie — Trempés de sang si ≥ moitié (Khorne)">
+          <span class="bc-label">Unités détruites</span>
+          <strong id="battle-dead">0</strong> / <span id="battle-army-size">0</span>
+          <button type="button" class="btn tiny secondary" id="btn-dead-minus" title="-1 sur le compteur">−</button>
+          <button type="button" class="btn tiny secondary" id="btn-dead-plus" title="+1 (+1 dîme Khorne)">+</button>
+        </span>
+        <span id="battle-trempes-badge" class="trempes-badge bc-trempes battle-footer-khorne-only" hidden title="Trempés de sang actifs">Trempés ✓</span>
+      </div>
+      <div class="battle-bar-actions">
+        <button type="button" class="btn secondary" id="btn-prev-phase" title="Annuler le dernier passage de phase">← Phase précédente</button>
+        <button type="button" class="btn" id="btn-next-phase">Phase suivante →</button>
+      </div>
+    </footer>
+  </div>
+
+  <!--
+    Ne pas utiliser import("./game-app.js") ici : pour un module inline, la résolution
+    est faite par rapport à l’URL de la page (import.meta.url), pas par rapport à <base>.
+    Sur GitHub Pages sans slash final, cela pointait vers /game-app.js (404).
+    Un <script type="module" src="…"> utilise bien le document base URL (donc <base> s’applique).
+  -->
+  <script type="module" src="game-app.js"></script>
+</body>
+</html>

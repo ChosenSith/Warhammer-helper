@@ -1,0 +1,12 @@
+{
+  "name": "warhammer-helper-party",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "partykit dev",
+    "deploy": "partykit deploy"
+  },
+  "dependencies": {
+    "partykit": "^0.0.115"
+  }
+}

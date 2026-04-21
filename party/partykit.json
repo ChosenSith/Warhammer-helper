@@ -1,0 +1,5 @@
+{
+  "name": "warhammer-helper-party",
+  "main": "party/index.ts",
+  "compatibilityDate": "2024-10-01"
+}

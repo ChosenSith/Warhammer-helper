@@ -25,8 +25,41 @@
   <div id="view-setup" class="app">
     <header class="header">
       <h1 id="setup-main-title">Warhammer — préparation</h1>
-      <p class="tagline" id="setup-tagline">Choisis ta faction, puis compose ta liste et lance la partie.</p>
+      <p class="tagline" id="setup-tagline">Salon multijoueur (optionnel), puis faction et liste — lance la partie.</p>
     </header>
+
+    <section class="panel" id="setup-multiplayer">
+      <h2>Salon &amp; équipes</h2>
+      <p class="hint small">Chaque joueur garde son écran habituel (ses unités, ses phases). Ici tu prépares le <strong>salon</strong> et ton <strong>équipe</strong> (1 à 10) : plusieurs joueurs peuvent partager le même numéro. La connexion temps réel (PartyKit) relaie les snapshots entre clients.</p>
+      <label class="field">
+        <span>Pseudo / nom</span>
+        <input type="text" id="setup-player-name" maxlength="40" autocomplete="nickname" placeholder="ex. affiché dans le salon" />
+      </label>
+      <label class="field">
+        <span>Code salon</span>
+        <input type="text" id="setup-room-code" maxlength="32" autocomplete="off" spellcheck="false" placeholder="ex. KHORNE-42 — à partager" />
+      </label>
+      <div class="field">
+        <span>Rôle</span>
+        <div id="setup-room-role" class="radio-list">
+          <label class="radio-line"><input type="radio" name="room-role" value="solo" checked /> Local (pas de salon)</label>
+          <label class="radio-line"><input type="radio" name="room-role" value="host" /> Créer / héberger le salon</label>
+          <label class="radio-line"><input type="radio" name="room-role" value="guest" /> Rejoindre un salon</label>
+        </div>
+      </div>
+      <label class="field">
+        <span>Mon équipe</span>
+        <select id="setup-team-id" class="full-width" aria-label="Numéro d’équipe (1 à 10)" title="Plusieurs joueurs peuvent partager le même numéro"></select>
+      </label>
+      <label class="field">
+        <span>Hôte PartyKit</span>
+        <input type="text" id="setup-partykit-host" maxlength="120" autocomplete="off" spellcheck="false" placeholder="warhammer-helper-party.chosensith.partykit.dev" title="Sans https:// — déployé via npm run deploy dans le dossier party/" />
+      </label>
+      <p id="setup-partykit-status" class="hint small" aria-live="polite"></p>
+      <p class="setup-global-actions">
+        <button type="button" class="btn secondary" id="btn-partykit-connect" disabled>Connexion au salon</button>
+      </p>
+    </section>
 
     <section class="panel setup-faction-panel">
       <h2>Faction</h2>
@@ -111,39 +144,6 @@
           <label class="radio-line"><input type="radio" name="who-starts" value="opponent" /> Adversaire (tour ennemi)</label>
         </div>
       </div>
-    </section>
-
-    <section class="panel" id="setup-multiplayer">
-      <h2>Salon &amp; équipes</h2>
-      <p class="hint small">Chaque joueur garde son écran habituel (ses unités, ses phases). Ici tu prépares le <strong>salon</strong> et ton <strong>équipe</strong> (1 à 10) : plusieurs joueurs peuvent partager le même numéro. La connexion temps réel (PartyKit) relaie les snapshots entre clients.</p>
-      <label class="field">
-        <span>Pseudo / nom</span>
-        <input type="text" id="setup-player-name" maxlength="40" autocomplete="nickname" placeholder="ex. affiché dans le salon" />
-      </label>
-      <label class="field">
-        <span>Code salon</span>
-        <input type="text" id="setup-room-code" maxlength="32" autocomplete="off" spellcheck="false" placeholder="ex. KHORNE-42 — à partager" />
-      </label>
-      <div class="field">
-        <span>Rôle</span>
-        <div id="setup-room-role" class="radio-list">
-          <label class="radio-line"><input type="radio" name="room-role" value="solo" checked /> Local (pas de salon)</label>
-          <label class="radio-line"><input type="radio" name="room-role" value="host" /> Créer / héberger le salon</label>
-          <label class="radio-line"><input type="radio" name="room-role" value="guest" /> Rejoindre un salon</label>
-        </div>
-      </div>
-      <label class="field">
-        <span>Mon équipe</span>
-        <select id="setup-team-id" class="full-width" aria-label="Numéro d’équipe (1 à 10)" title="Plusieurs joueurs peuvent partager le même numéro"></select>
-      </label>
-      <label class="field">
-        <span>Hôte PartyKit</span>
-        <input type="text" id="setup-partykit-host" maxlength="120" autocomplete="off" spellcheck="false" placeholder="warhammer-helper-party.chosensith.partykit.dev" title="Sans https:// — déployé via npm run deploy dans le dossier party/" />
-      </label>
-      <p id="setup-partykit-status" class="hint small" aria-live="polite"></p>
-      <p class="setup-global-actions">
-        <button type="button" class="btn secondary" id="btn-partykit-connect" disabled>Connexion au salon</button>
-      </p>
     </section>
 
     <section id="setup-khorne-powers" class="panel setup-army-powers">

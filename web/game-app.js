@@ -1981,7 +1981,7 @@ function renderSetup() {
   if (el.setupTagline) {
     if (!factionChosen) {
       el.setupTagline.textContent =
-        "Sélectionne une faction pour afficher la liste d’armée et les options correspondantes.";
+        "Salon multijoueur (optionnel) en haut, puis choisis une faction pour la liste d’armée.";
     } else if (playable) {
       el.setupTagline.textContent =
         "Compose ta liste, puis lance la partie.";
@@ -1993,7 +1993,7 @@ function renderSetup() {
   if (el.setupFactionDetail) {
     if (!factionChosen) {
       el.setupFactionDetail.textContent =
-        "Choisis une faction ci-dessus : composition, listes enregistrées et résumés de règles ne s’affichent qu’après sélection (contenu adapté à chaque faction).";
+        "Choisis une faction ci-dessous : composition, listes enregistrées et résumés de règles ne s’affichent qu’après sélection (contenu adapté à chaque faction).";
     } else {
       el.setupFactionDetail.textContent = fmeta?.description || "";
     }

@@ -45,5 +45,8 @@ sysinfo.txt
 # Node (PartyKit dans party/)
 party/node_modules/
 
+# Netlify (cache local CLI)
+.netlify/
+
 # Burst / incremental compiler
 *.burst*

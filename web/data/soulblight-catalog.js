@@ -167,6 +167,7 @@ export const SOULBLIGHT_SPELLS = [
     summary:
       "Sorcier SEIGNEUR RUINEMÂNE : unité ennemie visible 12\" — Frappe en dernier jusqu’au début de ton prochain tour.",
     phases: ["hero"],
+    requiresEnemyTarget: true,
   },
   {
     id: "sb_decrepitude",
@@ -175,6 +176,26 @@ export const SOULBLIGHT_SPELLS = [
     summary:
       "Sorcier SEIGNEUR RUINEMÂNE : unité ennemie visible 12\" — jusqu’à la fin du tour, −1 aux dégâts des armes de mêlée de la cible.",
     phases: ["hero"],
+    requiresEnemyTarget: true,
+    /** Reflet sur la fiche : malus aux dégâts des armes de mêlée. */
+    debuffMeleeDamage: -1,
+  },
+];
+
+/**
+ * Effets à cible ennemie (hors sorts du domaine) — même mécanisme de lien que les sorts.
+ * Roi revenant (coursier) / Chevaliers des tertres : antique malédiction.
+ */
+export const SOULBLIGHT_LINKED_ENEMY_EFFECTS = [
+  {
+    id: "sb_antique_malediction",
+    name: "Antique malédiction des tertres",
+    phases: ["combat"],
+    summary:
+      "Crit avec arme relique : cible maudite (−1 sauvegarde) — enregistre la cible après le jet.",
+    debuffSave: -1,
+    /** Présence d’au moins une de ces entrées dans l’armée. */
+    rosterCatalogIds: ["sb_roi_revenant_pied", "sb_chevaliers_tertres"],
   },
 ];
 

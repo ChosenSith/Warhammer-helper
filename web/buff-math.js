@@ -35,14 +35,15 @@ export function formatRendNum(n) {
   return String(n);
 }
 
-/** Agrège mods { hit, wound, save, rend } depuis buffs actifs. */
+/** Agrège mods { hit, wound, save, rend, damageMelee } depuis buffs actifs. */
 export function sumBuffMods(buffs) {
-  const s = { hit: 0, wound: 0, save: 0, rend: 0 };
+  const s = { hit: 0, wound: 0, save: 0, rend: 0, damageMelee: 0 };
   for (const b of buffs || []) {
     s.hit += b.hit || 0;
     s.wound += b.wound || 0;
     s.save += b.save || 0;
     s.rend += b.rend || 0;
+    s.damageMelee += b.damageMelee || 0;
   }
   return s;
 }

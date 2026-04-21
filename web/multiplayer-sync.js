@@ -62,10 +62,12 @@ export function normalizeTeamIdSync(v) {
   return x;
 }
 
+import { normalizeOutgoingUnitEffect } from "./battle-effects.js";
+
 /**
  * Fusionne un message `army_snapshot` reçu du salon : unités des autres équipes uniquement.
  * Les unités d’un même client remplacent la liste précédente de ce client (clé `remoteClientId`).
- * @param {{ opponentUnits?: unknown[] }} battle
+ * @param {{ opponentUnits?: unknown[], remoteFactionEffectsByClient?: object, remoteUnitEffectsByClient?: object }} battle
  * @param {unknown} payload
  * @param {unknown} myTeamId
  */
@@ -102,4 +104,22 @@ export function applyRemoteArmySnapshot(battle, payload, myTeamId) {
     }
   }
   battle.opponentUnits = [...others, ...next];
+
+  if (!battle.remoteFactionEffectsByClient) battle.remoteFactionEffectsByClient = {};
+  if (Object.prototype.hasOwnProperty.call(p, "factionEffects")) {
+    battle.remoteFactionEffectsByClient[clientId] = {
+      factionId: String(p.factionId ?? ""),
+      effects: Array.isArray(p.factionEffects) ? p.factionEffects : [],
+    };
+  }
+
+  if (!battle.remoteUnitEffectsByClient) battle.remoteUnitEffectsByClient = {};
+  if (Object.prototype.hasOwnProperty.call(p, "unitEffectsOnOthers")) {
+    const rawEffects = Array.isArray(p.unitEffectsOnOthers)
+      ? p.unitEffectsOnOthers
+      : [];
+    battle.remoteUnitEffectsByClient[clientId] = rawEffects
+      .map(normalizeOutgoingUnitEffect)
+      .filter(Boolean);
+  }
 }

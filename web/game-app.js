@@ -31,6 +31,8 @@ import {
   IRONJAWZ_BATTLE_TRAITS,
   SOULBLIGHT_BATTLE_TRAITS,
   SOULBLIGHT_SPELLS,
+  SOULBLIGHT_LINKED_ENEMY_EFFECTS,
+  SOULBLIGHT_ARTIFACTS,
   SOULBLIGHT_CONVOCATION_SPELLS,
   MELEE_PROXIMITY_RECAP_SOULBLIGHT,
 } from "./data/khorne-catalog.js";
@@ -43,6 +45,14 @@ import {
   formatRendNum,
   sumBuffMods,
 } from "./buff-math.js";
+import {
+  buildFactionEffectsPayload,
+  getShootingHitPenaltyVsKhorne,
+  remoteHasSyncedEffect,
+  collectIncomingRemoteBuffsForInstance,
+  mergeOutgoingBuffsForEnemyRow,
+  isOutgoingEffectActiveForBattleRound,
+} from "./battle-effects.js";
 import { applyOpponentUnitsToBattle } from "./multiplayer-sync.js";
 import * as partyKit from "./partykit-bridge.js";
 
@@ -679,6 +689,12 @@ function loadState() {
         }
         if (!Array.isArray(s.battle.phaseHistory)) s.battle.phaseHistory = [];
         if (!Array.isArray(s.battle.opponentUnits)) s.battle.opponentUnits = [];
+        if (!s.battle.remoteFactionEffectsByClient)
+          s.battle.remoteFactionEffectsByClient = {};
+        if (!s.battle.remoteUnitEffectsByClient)
+          s.battle.remoteUnitEffectsByClient = {};
+        if (!Array.isArray(s.battle.myOutgoingUnitEffects))
+          s.battle.myOutgoingUnitEffects = [];
       }
     }
     const battleActive = isPersistedBattleActive(s.battle);
@@ -2705,6 +2721,9 @@ function initBattleFromSetup() {
     phaseHistory: [],
     /** Snapshots unités adverses (sync réseau) — voir multiplayer-sync.js */
     opponentUnits: [],
+    remoteFactionEffectsByClient: {},
+    remoteUnitEffectsByClient: {},
+    myOutgoingUnitEffects: [],
   };
   persist();
   showBattle();
@@ -2868,6 +2887,27 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Tiroir repliable pour alléger la colonne de phase lorsque plusieurs blocs s’empilent. */
+function wrapPhaseDrawer(title, bodyHtml, opts = {}) {
+  const inner = String(bodyHtml || "").trim();
+  if (!inner) return "";
+  const open = opts.open !== false;
+  const extra = opts.className ? ` ${opts.className}` : "";
+  return `<details class="phase-drawer${extra}"${
+    open ? " open" : ""
+  }><summary class="phase-drawer-summary">${escapeHtml(title)}</summary><div class="phase-drawer-body">${bodyHtml}</div></details>`;
+}
+
+function purgeExpiredOutgoingEffects(b) {
+  if (!b || !Array.isArray(b.myOutgoingUnitEffects)) return;
+  const br = b.battleRound ?? 1;
+  const before = b.myOutgoingUnitEffects.length;
+  b.myOutgoingUnitEffects = b.myOutgoingUnitEffects.filter((e) =>
+    isOutgoingEffectActiveForBattleRound(e, br),
+  );
+  if (b.myOutgoingUnitEffects.length !== before) persist();
+}
+
 function phaseUnitsFootnote(phaseId) {
   const heroFoot =
     isKhorneFactionContext()
@@ -2895,6 +2935,146 @@ function phaseUnitsFootnote(phaseId) {
   return lines[phaseId] || "";
 }
 
+/**
+ * Effets à cible ennemie synchronisés (sorts + Be’lakor + Antique malédiction).
+ */
+function buildLinkedEnemyOutgoingHtml(ph, b) {
+  if (!isPlayerTurn(b)) return "";
+  const opp = b.opponentUnits || [];
+  const blocks = [];
+
+  if (ph.id === "hero" && isSoulblightFactionContext()) {
+    const spells = SOULBLIGHT_SPELLS.filter(
+      (s) => s.phases?.includes("hero") && s.requiresEnemyTarget,
+    );
+    if (spells.length) {
+      if (!opp.length) {
+        blocks.push(
+          `<section class="panel-inner phase-spell-cast"><h3 class="subh">Sorts (cible ennemie)</h3><p class="muted small">Connecte le salon ou utilise « Exemple local » dans le rail <strong>Ennemi</strong> pour afficher des unités à cibler.</p></section>`,
+        );
+      } else {
+        let h = `<section class="panel-inner phase-spell-cast"><h3 class="subh">Sorts — cible ennemie</h3>`;
+        h += `<p class="muted small">Après un jet réussi, enregistre la cible : l’adversaire voit le rappel sur sa fiche (synchronisé). Effet valable la <strong>manche en cours</strong> ; retirable sous « Effets enregistrés actifs » en cas d’erreur.</p>`;
+        h += `<ul class="phase-spell-list">`;
+        for (const sp of spells) {
+          h += `<li class="phase-spell-list-item">`;
+          h += `<strong>${escapeHtml(sp.name)}</strong> <span class="muted">(incant. ${escapeHtml(sp.cast)})</span>`;
+          h += `<div class="muted small">${escapeHtml(sp.summary)}</div>`;
+          h += `<div class="phase-spell-controls">`;
+          h += `<label class="field phase-spell-field"><span>Unité ennemie</span>`;
+          h += `<select class="outgoing-enemy-select" data-outgoing-effect-id="${escapeHtml(sp.id)}">`;
+          h += `<option value="">— Choisir —</option>`;
+          for (const row of opp) {
+            if (row.destroyed) continue;
+            const u = getUnitById(row.catalogId);
+            const lab = escapeHtml(row.name || u?.name || row.catalogId);
+            h += `<option value="${escapeHtml(row.id)}">${lab} (${row.woundsCurrent}/${row.woundsMax} PV)</option>`;
+          }
+          h += `</select></label>`;
+          h += `<button type="button" class="btn small" data-outgoing-apply="${escapeHtml(sp.id)}">Appliquer sur la cible</button>`;
+          h += `</div></li>`;
+        }
+        h += `</ul></section>`;
+        blocks.push(h);
+      }
+    }
+  }
+
+  if (ph.id === "hero") {
+    const hasBel = state.instances.some(
+      (i) =>
+        !i.destroyed && getUnitById(i.catalogId)?.id === "belakor",
+    );
+    if (hasBel) {
+      if (!opp.length) {
+        blocks.push(
+          `<section class="panel-inner phase-spell-cast"><h3 class="subh">Be’lakor — Affaiblissement de l’ennemi</h3><p class="muted small">Ajoute des unités dans le rail « Ennemi » (salon ou exemple local) pour enregistrer une cible.</p></section>`,
+        );
+      } else {
+        const ab = getUnitById("belakor")?.abilities?.find(
+          (a) => a.name === "Affaiblissement de l’ennemi",
+        );
+        let h = `<section class="panel-inner phase-spell-cast"><h3 class="subh">Be’lakor — Affaiblissement de l’ennemi</h3>`;
+        h += `<p class="muted small">${escapeHtml(ab?.summary || "")}</p>`;
+        h += `<div class="phase-spell-controls">`;
+        h += `<label class="field phase-spell-field"><span>Unité ennemie</span>`;
+        h += `<select class="outgoing-enemy-select" data-outgoing-effect-id="belakor_affaiblissement">`;
+        h += `<option value="">— Choisir —</option>`;
+        for (const row of opp) {
+          if (row.destroyed) continue;
+          const u = getUnitById(row.catalogId);
+          const lab = escapeHtml(row.name || u?.name || row.catalogId);
+          h += `<option value="${escapeHtml(row.id)}">${lab} (${row.woundsCurrent}/${row.woundsMax} PV)</option>`;
+        }
+        h += `</select></label>`;
+        h += `<button type="button" class="btn small" data-outgoing-apply="belakor_affaiblissement">Appliquer sur la cible</button>`;
+        h += `</div></section>`;
+        blocks.push(h);
+      }
+    }
+  }
+
+  if (ph.id === "combat" && isSoulblightFactionContext()) {
+    for (const def of SOULBLIGHT_LINKED_ENEMY_EFFECTS) {
+      if (!def.phases?.includes("combat")) continue;
+      const rosterOk = def.rosterCatalogIds.some((cid) =>
+        state.instances.some(
+          (i) => !i.destroyed && getUnitById(i.catalogId)?.id === cid,
+        ),
+      );
+      if (!rosterOk) continue;
+      if (!opp.length) {
+        blocks.push(
+          `<section class="panel-inner phase-spell-cast"><h3 class="subh">${escapeHtml(def.name)}</h3><p class="muted small">Rail « Ennemi » vide — impossible d’enregistrer la cible maudite.</p></section>`,
+        );
+        continue;
+      }
+      let h = `<section class="panel-inner phase-spell-cast"><h3 class="subh">${escapeHtml(def.name)}</h3>`;
+      h += `<p class="muted small">${escapeHtml(def.summary)}</p>`;
+      h += `<div class="phase-spell-controls">`;
+      h += `<label class="field phase-spell-field"><span>Unité ennemie</span>`;
+      h += `<select class="outgoing-enemy-select" data-outgoing-effect-id="${escapeHtml(def.id)}">`;
+      h += `<option value="">— Choisir —</option>`;
+      for (const row of opp) {
+        if (row.destroyed) continue;
+        const u = getUnitById(row.catalogId);
+        const lab = escapeHtml(row.name || u?.name || row.catalogId);
+        h += `<option value="${escapeHtml(row.id)}">${lab} (${row.woundsCurrent}/${row.woundsMax} PV)</option>`;
+      }
+      h += `</select></label>`;
+      h += `<button type="button" class="btn small" data-outgoing-apply="${escapeHtml(def.id)}">Appliquer sur la cible</button>`;
+      h += `</div></section>`;
+      blocks.push(h);
+    }
+  }
+
+  return blocks.join("");
+}
+
+/** Liste des effets cible ennemie encore actifs (manche en cours) + retrait manuel. */
+function buildOutgoingEffectsManagerHtml(b) {
+  if (!b || !isPlayerTurn(b)) return "";
+  const br = b.battleRound ?? 1;
+  const list = (b.myOutgoingUnitEffects || []).filter((e) =>
+    isOutgoingEffectActiveForBattleRound(e, br),
+  );
+  if (!list.length) return "";
+  let h = `<div class="outgoing-effects-manager panel-inner">`;
+  h += `<h4 class="subh">Effets enregistrés actifs</h4>`;
+  h += `<p class="muted small">Chaque entrée vaut pour la <strong>manche ${br}</strong> en cours ; elle est retirée automatiquement au passage à la manche suivante. Utilise <strong>Retirer</strong> en cas d’erreur.</p>`;
+  h += `<ul class="outgoing-effects-list">`;
+  for (const e of list) {
+    const row = b.opponentUnits?.find((r) => r.id === e.targetRemoteId);
+    const u = row ? getUnitById(row.catalogId) : null;
+    const targetName = escapeHtml(row?.name || u?.name || e.targetRemoteId || "…");
+    const keyAttr = encodeURIComponent(e.key || "");
+    h += `<li class="outgoing-effects-list-item"><span class="outgoing-effects-label">${escapeHtml(e.label || "Effet")}</span> <span class="muted">— cible : ${targetName}</span> `;
+    h += `<button type="button" class="btn tiny secondary" data-outgoing-remove-key="${keyAttr}">Retirer</button></li>`;
+  }
+  h += `</ul></div>`;
+  return h;
+}
+
 function buildPhaseArmyPowersHtml(ph, b) {
   if (!isPlayableFactionContext()) return "";
   const fid = state.setup.factionId;
@@ -2903,6 +3083,7 @@ function buildPhaseArmyPowersHtml(ph, b) {
   if (isPeauxVertesFactionContext()) {
     for (const bt of IRONJAWZ_BATTLE_TRAITS) {
       if (!bt.phases?.includes(ph.id)) continue;
+      if (bt.id === "waaagh_machefer" && ph.id === "charge") continue;
       if (showPowerFullForPhase(bt, ph, b)) {
         parts.push(
           `<li><strong>Trait d’armée — ${escapeHtml(bt.name)}</strong> : ${escapeHtml(bt.summary)}</li>`,
@@ -3078,6 +3259,104 @@ function buildCombatMeleeStripHtml(b, ph) {
   return `<section class="combat-melee-strip panel-inner" aria-label="Aperçu mêlée"><h3 class="subh combat-melee-strip-title">Mêlée — au contact</h3><div class="melee-strip-grid">${cards}</div></section>`;
 }
 
+/** Rappels locaux (traits, artefacts, dîmes, unités) sans synchro adverse. */
+function buildPhaseLocalRemindersHtml(ph, b) {
+  let h = "";
+  if (ph.id === "hero" && isPlayerTurn(b) && isKhorneFactionContext() && state.setup.traitId === "mepris_magie") {
+    const hero = state.instances.find(
+      (i) => i.id === state.setup.traitHeroInstanceId,
+    );
+    const hn = hero
+      ? getUnitById(hero.catalogId)?.name || "Héros"
+      : "Héros (choisis le porteur du trait)";
+    h += `<div class="panel-inner battle-global-effect"><p>Rappel — <strong>Mépris pour la magie</strong> (${escapeHtml(hn)}) : −1 aux jets d’incantation des SORCIERS ennemis à 12″ ; −1 aux psalmodies des PRÊTRES ennemis à 12″.</p></div>`;
+  }
+  if (ph.id === "hero" && isPlayerTurn(b) && isKhorneFactionContext() && state.setup.artifactId === "collier_mepris") {
+    const hero = state.instances.find(
+      (i) => i.id === state.setup.artifactHeroInstanceId,
+    );
+    const hn = hero
+      ? getUnitById(hero.catalogId)?.name || "Porteur"
+      : "Porteur";
+    const art = ARTIFACTS.find((a) => a.id === "collier_mepris");
+    h += `<div class="panel-inner battle-global-effect"><p>Rappel — <strong>${escapeHtml(art?.name || "Collier de mépris")}</strong> (${escapeHtml(hn)}) : ${escapeHtml(art?.summary || "")}</p></div>`;
+  }
+  if (ph.id === "combat" && isPlayerTurn(b) && isKhorneFactionContext() && state.setup.artifactId === "argath") {
+    const hero = state.instances.find(
+      (i) => i.id === state.setup.artifactHeroInstanceId,
+    );
+    const hn = hero
+      ? getUnitById(hero.catalogId)?.name || "Porteur"
+      : "Porteur";
+    const art = ARTIFACTS.find((a) => a.id === "argath");
+    h += `<div class="panel-inner battle-global-effect"><p>Rappel — <strong>${escapeHtml(art?.name || "Ar’gath")}</strong> (${escapeHtml(hn)}) : ${escapeHtml(art?.summary || "")}</p></div>`;
+  }
+  if (
+    ph.id === "hero" &&
+    isPlayerTurn(b) &&
+    isKhorneFactionContext() &&
+    state.instances.some(
+      (i) =>
+        !i.destroyed && getUnitById(i.catalogId)?.id === "flesh_hounds",
+    )
+  ) {
+    h += `<div class="panel-inner battle-global-effect"><p>Rappel — <strong>Molosses de Khorne</strong> — Chasseurs de mystiques : à 12″ d’un SORCIER, doubles 1-2 sur incantation = sort fourbe ; psalmodie 2 non modifiée = échec.</p></div>`;
+  }
+  if (
+    ph.id === "hero" &&
+    isPlayerTurn(b) &&
+    isSoulblightFactionContext() &&
+    state.setup.artifactId === "sb_pendule_terminus"
+  ) {
+    const art = SOULBLIGHT_ARTIFACTS.find((a) => a.id === "sb_pendule_terminus");
+    if (art) {
+      h += `<div class="panel-inner battle-global-effect"><p>Rappel — <strong>${escapeHtml(art.name)}</strong> : ${escapeHtml(art.summary)}</p></div>`;
+    }
+  }
+  if (ph.id === "charge") {
+    if (
+      isKhorneFactionContext() &&
+      b.titheUnlocked?.euphorie_combat &&
+      !isPlayerTurn(b)
+    ) {
+      const ab = BLOOD_TITHE_ABILITIES.find((a) => a.id === "euphorie_combat");
+      h += `<div class="panel-inner battle-global-effect"><p><strong>Euphorie du combat</strong> (passif) : ${escapeHtml(ab?.summary || "")} — rappel pendant la phase de charge adverse.</p></div>`;
+    }
+    if (isPlayerTurn(b) && remoteHasSyncedEffect(state, "euphorie_combat")) {
+      h += `<div class="panel-inner battle-global-effect"><p>Rappel — adversaire avec <strong>Euphorie du combat</strong> : si tu charges des Lames de Khorne ce tour, les aptitudes d’arme de tes unités concernées n’ont pas d’effet (sauf Compagnon).</p></div>`;
+    }
+    if (isPlayerTurn(b) && isPeauxVertesFactionContext()) {
+      const w = IRONJAWZ_BATTLE_TRAITS.find((t) => t.id === "waaagh_machefer");
+      if (w) {
+        h += `<div class="panel-inner battle-global-effect"><p>Rappel — <strong>${escapeHtml(w.name)}</strong> : ${escapeHtml(w.summary)}</p></div>`;
+      }
+    }
+  }
+  if (ph.id === "end" && isPlayerTurn(b)) {
+    if (
+      isKhorneFactionContext() &&
+      state.instances.some(
+        (i) => !i.destroyed && getUnitById(i.catalogId)?.id === "skull_cannon",
+      )
+    ) {
+      const u = getUnitById("skull_cannon");
+      const ab = u?.abilities?.find((a) => a.name === "Bombardement macabre");
+      h += `<div class="panel-inner battle-global-effect"><p><strong>Canon à crânes — Bombardement macabre</strong> (comptage objectifs / fin de tour) : ${escapeHtml(ab?.summary || "")}</p></div>`;
+    }
+    if (
+      isKhorneFactionContext() &&
+      state.instances.some(
+        (i) => !i.destroyed && getUnitById(i.catalogId)?.id === "khorgorath",
+      )
+    ) {
+      const u = getUnitById("khorgorath");
+      const ab = u?.abilities?.find((a) => a.name === "Repas d’os");
+      h += `<div class="panel-inner battle-global-effect"><p><strong>Khorgorath — Repas d’os</strong> (fin de tour) : ${escapeHtml(ab?.summary || "")}</p></div>`;
+    }
+  }
+  return h;
+}
+
 function buildPhaseUnitsPanelHtml(ph, b) {
   if (!isPlayerTurn(b)) {
     const oppTitle =
@@ -3160,6 +3439,14 @@ function buildPhaseUnitsPanelHtml(ph, b) {
     }
     inner += `</ul>`;
   }
+
+  if (ph.id === "shooting" && isPlayerTurn(b)) {
+    const pen = getShootingHitPenaltyVsKhorne(state);
+    if (pen < 0) {
+      inner += `<div class="panel-inner battle-global-effect"><p>Rappel : <strong>${-pen} au jet pour toucher</strong> pour tes attaques de tir contre les Lames de Khorne (dîme adverse <em>Un combat glorieux ou rien</em>).</p></div>`;
+    }
+  }
+  inner += buildPhaseLocalRemindersHtml(ph, b);
 
   const titheNotes = isKhorneFactionContext()
     ? getBloodTitheReasonsForPhase(ph.id)
@@ -3315,7 +3602,55 @@ function buildMyArmySnapshotForSync() {
     playerName: state.setup.playerName || "",
     roomCode: state.setup.roomCode || "",
     units: out,
+    factionEffects: buildFactionEffectsPayload(state),
+    unitEffectsOnOthers: (
+      state.battle?.myOutgoingUnitEffects || []
+    ).filter((e) =>
+      isOutgoingEffectActiveForBattleRound(e, state.battle?.battleRound ?? 1),
+    ),
   };
+}
+
+/**
+ * Tableau d’armes — unités adverses (rappel CT tir si dîme « Un combat glorieux ou rien » côté ami).
+ * @param {{ hitModRanged?: number }} [opts]
+ */
+function buildReadonlyWeaponsTableHtml(u, opts = {}) {
+  const hitModRanged = opts.hitModRanged ?? 0;
+  const weapons = u?.weapons;
+  if (!Array.isArray(weapons) || weapons.length === 0) return "";
+  const hasRange = weapons.some((w) => w.range);
+  let h = `<h4>Armes</h4><table class="wtable wtable--readonly"><thead><tr>`;
+  h += `<th></th>`;
+  if (hasRange) h += `<th>Portée</th>`;
+  h += `<th>A</th><th>CT</th><th>CB</th><th>P</th><th>D</th></tr></thead><tbody>`;
+  for (const w of weapons) {
+    const hb = parseRoll(w.hit);
+    const ranged = weaponIsRangedForPhase(w);
+    const he =
+      ranged && hb != null && hitModRanged
+        ? applyRollBonus(hb, hitModRanged)
+        : null;
+    const ctDisp =
+      he != null && hb != null && he !== hb
+        ? `${escapeHtml(String(w.hit ?? "—"))} → ${escapeHtml(formatRoll(he))}`
+        : escapeHtml(String(w.hit ?? "—"));
+    h += `<tr><td>${escapeHtml(w.name)}</td>`;
+    if (hasRange) h += `<td>${escapeHtml(String(w.range ?? "—"))}</td>`;
+    h += `<td>${escapeHtml(String(w.attacks ?? "—"))}</td>`;
+    h += `<td>${ctDisp}</td>`;
+    h += `<td>${escapeHtml(String(w.wound ?? "—"))}</td>`;
+    h += `<td>${escapeHtml(String(w.rend ?? "—"))}</td>`;
+    h += `<td>${escapeHtml(String(w.damage ?? "—"))}`;
+    if (w.notes)
+      h += ` <span class="muted small">(${escapeHtml(w.notes)})</span>`;
+    h += `</td></tr>`;
+  }
+  h += `</tbody></table>`;
+  if (hitModRanged) {
+    h += `<p class="muted small">Rappel : pour les tirs contre les Lames de Khorne : <strong>${hitModRanged > 0 ? "+" : ""}${hitModRanged} pour toucher</strong> (ta dîme « Un combat glorieux ou rien »).</p>`;
+  }
+  return h;
 }
 
 function renderEnemyBattleUI() {
@@ -3363,10 +3698,17 @@ function renderEnemyDetailPanel(remoteId) {
   if (row.destroyed) h += ` — <strong>unité détruite</strong>`;
   h += `</p>`;
   if (u) {
-    h += `<p class="muted small"><strong>M</strong> ${u.stats.move} · <strong>Sv</strong> ${u.stats.save} · <strong>Ctrl</strong> ${u.stats.control}</p>`;
+    h += `<p class="muted small"><strong>M</strong> ${u.stats.move} · <strong>Sv</strong> ${u.stats.save} · <strong>PV</strong> ${u.stats.wounds ?? "—"} · <strong>Ctrl</strong> ${u.stats.control}</p>`;
+    if (u.stats?.bravery) {
+      h += `<p class="muted small"><strong>Courage</strong> ${u.stats.bravery}</p>`;
+    }
     if (u.keywords?.length) {
       h += `<p class="muted small"><strong>Mots-clés :</strong> ${u.keywords.map((k) => escapeHtml(k)).join(", ")}</p>`;
     }
+    const khornePassive =
+      isKhorneFactionContext() && b?.titheUnlocked?.un_combat_glorieux;
+    const hitModRanged = khornePassive ? -1 : 0;
+    h += buildReadonlyWeaponsTableHtml(u, { hitModRanged });
     h += `<h4>Aptitudes</h4><ul class="abil-list">`;
     for (const a of u.abilities || []) {
       h += `<li><strong>${escapeHtml(a.name)}</strong> — ${escapeHtml(a.summary)}</li>`;
@@ -3382,9 +3724,10 @@ function renderEnemyDetailPanel(remoteId) {
   } else {
     h += `<p class="muted">Profil non trouvé dans le catalogue (id : ${escapeHtml(row.catalogId)}).</p>`;
   }
-  if (row.buffs?.length) {
+  const mergedBuffs = mergeOutgoingBuffsForEnemyRow(row, state);
+  if (mergedBuffs?.length) {
     h += `<h4>Effets visibles</h4><ul class="abil-list">`;
-    for (const bf of row.buffs) {
+    for (const bf of mergedBuffs) {
       h += `<li>${escapeHtml(bf.label || "Effet")}</li>`;
     }
     h += `</ul>`;
@@ -3395,6 +3738,130 @@ function renderEnemyDetailPanel(remoteId) {
     el.enemyDetailPanel.dataset.remoteId = remoteId;
     el.enemyDetailPanel.hidden = false;
   }
+}
+
+function removeOutgoingUnitEffectByKey(key) {
+  const b = state.battle;
+  if (!b || !isPlayerTurn(b) || !key) return;
+  const prev = (b.myOutgoingUnitEffects || []).length;
+  b.myOutgoingUnitEffects = (b.myOutgoingUnitEffects || []).filter(
+    (e) => e.key !== key,
+  );
+  if ((b.myOutgoingUnitEffects || []).length === prev) return;
+  persist();
+  partyKit.schedulePartySnapshotPush();
+  renderBattle();
+}
+
+function tryApplyOutgoingEnemyEffect(effectId) {
+  const b = state.battle;
+  if (!b || !isPlayerTurn(b)) return;
+  const ph = currentPhase();
+  /** @type {{ label: string, hit: number, wound: number, save: number, rend: number, damageMelee: number, spellId: string, effectId: string } | null} */
+  let payload = null;
+
+  if (effectId === "belakor_affaiblissement") {
+    if (ph.id !== "hero") {
+      alert("En phase des héros uniquement.");
+      return;
+    }
+    const hasBel = state.instances.some(
+      (i) =>
+        !i.destroyed && getUnitById(i.catalogId)?.id === "belakor",
+    );
+    if (!hasBel) return;
+    payload = {
+      label:
+        "Affaiblissement de l’ennemi — cible enregistrée (−1 pour toucher ; attaques ennemies contre cette unité sans critique — règle table).",
+      hit: -1,
+      wound: 0,
+      save: 0,
+      rend: 0,
+      damageMelee: 0,
+      spellId: "",
+      effectId: "belakor_affaiblissement",
+    };
+  } else if (effectId === "sb_antique_malediction") {
+    if (ph.id !== "combat") {
+      alert("En phase de mêlée uniquement.");
+      return;
+    }
+    const def = SOULBLIGHT_LINKED_ENEMY_EFFECTS.find(
+      (x) => x.id === "sb_antique_malediction",
+    );
+    const rosterOk = def?.rosterCatalogIds?.some((cid) =>
+      state.instances.some(
+        (i) => !i.destroyed && getUnitById(i.catalogId)?.id === cid,
+      ),
+    );
+    if (!def || !rosterOk) return;
+    payload = {
+      label: "Antique malédiction des tertres — cible maudite (−1 sauvegarde).",
+      hit: 0,
+      wound: 0,
+      save: def.debuffSave ?? -1,
+      rend: 0,
+      damageMelee: 0,
+      spellId: "",
+      effectId: "sb_antique_malediction",
+    };
+  } else {
+    const sp = SOULBLIGHT_SPELLS.find((s) => s.id === effectId);
+    if (!sp?.requiresEnemyTarget) return;
+    if (ph.id !== "hero") {
+      alert("En phase des héros uniquement.");
+      return;
+    }
+    const dmgMelee =
+      sp.debuffMeleeDamage != null ? Number(sp.debuffMeleeDamage) : 0;
+    payload = {
+      label: `${sp.name} — cible enregistrée`,
+      hit: 0,
+      wound: 0,
+      save: 0,
+      rend: 0,
+      damageMelee: Number.isFinite(dmgMelee) ? dmgMelee : 0,
+      spellId: effectId,
+      effectId: effectId,
+    };
+  }
+
+  if (!payload) return;
+
+  const sel = el.phaseContent?.querySelector(
+    `select.outgoing-enemy-select[data-outgoing-effect-id="${effectId}"]`,
+  );
+  const remoteId = sel?.value?.trim();
+  if (!remoteId) {
+    alert("Choisis une unité ennemie.");
+    return;
+  }
+  const row = (b.opponentUnits || []).find((r) => r.id === remoteId);
+  if (!row || row.destroyed) {
+    alert("Cible invalide.");
+    return;
+  }
+  const key = `${effectId}:${remoteId}:${b.battleRound ?? 1}`;
+  b.myOutgoingUnitEffects = (b.myOutgoingUnitEffects || []).filter(
+    (e) => e.key !== key,
+  );
+  b.myOutgoingUnitEffects.push({
+    key,
+    effectId: payload.effectId,
+    spellId: payload.spellId,
+    targetRemoteId: remoteId,
+    label: payload.label,
+    hit: payload.hit,
+    wound: payload.wound,
+    save: payload.save,
+    rend: payload.rend,
+    damageMelee: payload.damageMelee,
+    castTurn: b.playerTurnNumber,
+    battleRound: b.battleRound ?? 1,
+  });
+  persist();
+  partyKit.schedulePartySnapshotPush();
+  renderBattle();
 }
 
 function tryUnlockTithe(abilityId) {
@@ -3415,12 +3882,14 @@ function tryUnlockTithe(abilityId) {
   b.bloodTithe -= ab.cost;
   b.titheUnlocked[abilityId] = true;
   persist();
+  partyKit.schedulePartySnapshotPush();
   renderBattle();
 }
 
 function renderBattle() {
   const b = state.battle;
   if (!b) return;
+  purgeExpiredOutgoingEffects(b);
 
   const ph = currentPhase();
   if (ph.id !== "combat") combatTrackerShowAll = false;
@@ -3495,7 +3964,23 @@ function renderBattle() {
 
     html += buildIronjawzBattleEncartsHtml(ph, b);
     html += buildSoulblightBattleEncartsHtml(ph, b);
-    html += buildPhaseUnitsPanelHtml(ph, b);
+    html += `<div class="phase-drawer-stack">`;
+    html += wrapPhaseDrawer(
+      "Récap unités & rappels de phase",
+      buildPhaseUnitsPanelHtml(ph, b),
+    );
+    html += wrapPhaseDrawer(
+      "Rappels perso (traits, artefacts, terrain)",
+      buildPhaseLocalRemindersHtml(ph, b),
+    );
+    const linkedAndManager =
+      buildLinkedEnemyOutgoingHtml(ph, b) +
+      buildOutgoingEffectsManagerHtml(b);
+    html += wrapPhaseDrawer(
+      "Enregistrements cible ennemie (synchronisés)",
+      linkedAndManager,
+    );
+    html += `</div>`;
     html += wrapPhaseTrackerCollapsible(buildPhaseTrackerHtml(ph, b));
 
     if (khorneBattle) {
@@ -3719,7 +4204,11 @@ function formatDamageTrempes(raw, damageBonus) {
   if (s === "" || s === "—") return raw ?? "—";
   if (/^\d+$/.test(s)) {
     const n = parseInt(s, 10);
-    return `${raw} → ${n + damageBonus}`;
+    const next = n + damageBonus;
+    return `${raw} → ${Math.max(0, next)}`;
+  }
+  if (damageBonus < 0) {
+    return `${raw} (dégâts ${damageBonus})`;
   }
   return `${raw} (+${damageBonus})`;
 }
@@ -3745,9 +4234,11 @@ function renderDetailPanel(instanceId) {
   if (!u) return;
 
   ensureInstanceTracking(inst);
-  const modsRaw = sumBuffMods(inst.buffs);
+  const incomingRemote = collectIncomingRemoteBuffsForInstance(inst, state);
+  const modsRaw = sumBuffMods([...(inst.buffs || []), ...incomingRemote]);
+  const khorneShotPen = getShootingHitPenaltyVsKhorne(state);
   const mods = inst.destroyed
-    ? { hit: 0, wound: 0, save: 0, rend: 0 }
+    ? { hit: 0, wound: 0, save: 0, rend: 0, damageMelee: 0 }
     : modsRaw;
   const sit = getTacticalSituationMods(inst, u);
   const trempesForProfile = trempesProfileActiveForUnit(
@@ -3981,7 +4472,14 @@ function renderDetailPanel(instanceId) {
         ? 1
         : 0;
     const rbForEff = rb != null ? rb + ambRend : null;
-    const he = hb != null ? applyRollBonus(hb, mods.hit + sit.hit) : null;
+    let extraHit = 0;
+    if (weaponIsRangedForPhase(w) && khorneShotPen < 0) {
+      extraHit += khorneShotPen;
+    }
+    const he =
+      hb != null
+        ? applyRollBonus(hb, mods.hit + sit.hit + extraHit)
+        : null;
     const we = wb != null ? applyRollBonus(wb, mods.wound + sit.wound) : null;
     const re = rbForEff != null ? rbForEff - rendTotal : null;
     const chargeDmg =
@@ -3990,10 +4488,10 @@ function renderDetailPanel(instanceId) {
         : 0;
     const trempesDmg =
       trempesForProfile && tm.damageBonus > 0 ? tm.damageBonus : 0;
-    const dmgCell = formatDamageTrempes(
-      w.damage,
-      trempesDmg + chargeDmg,
-    );
+    const isMeleeRow = !weaponIsRangedForPhase(w);
+    const dmgExtra =
+      (isMeleeRow ? mods.damageMelee : 0) + trempesDmg + chargeDmg;
+    const dmgCell = formatDamageTrempes(w.damage, dmgExtra);
     const rageExtra = getConsangRageMeleeAttackBonus(inst, u, w);
     const ijExtra = getIronjawzMeleeAttackBonus(inst, u, w);
     const atkCell = formatAttacksCellWithMeleeAtkBonus(
@@ -4059,6 +4557,18 @@ function renderDetailPanel(instanceId) {
     h += `<li><strong>${a.name}</strong> — ${a.summary}</li>`;
   }
   h += `</ul>`;
+
+  if (incomingRemote.length) {
+    h += `<h4>Effets reçus (adversaire)</h4><p class="muted small">Valables pour la manche indiquée ; ils disparaissent à la manche suivante (synchronisé).</p><ul class="abil-list">`;
+    for (const e of incomingRemote) {
+      const mr =
+        e.battleRound != null
+          ? ` <span class="muted small">(manche ${e.battleRound})</span>`
+          : "";
+      h += `<li>${escapeHtml(e.label || "Effet")}${mr}</li>`;
+    }
+    h += `</ul>`;
+  }
 
   h += `<h4>Buffs actifs sur cette unité</h4>`;
   if (!inst.buffs?.length) h += `<p class="muted">Aucun.</p>`;
@@ -4408,6 +4918,19 @@ el.viewBattle?.addEventListener("click", (e) => {
   }
   const titheId = t?.closest?.("[data-tithe-unlock]")?.dataset?.titheUnlock;
   if (titheId) tryUnlockTithe(titheId);
+  const outgoingApply = t?.closest?.("[data-outgoing-apply]")?.dataset
+    ?.outgoingApply;
+  if (outgoingApply) tryApplyOutgoingEnemyEffect(outgoingApply);
+  const removeBtn = t?.closest?.("[data-outgoing-remove-key]");
+  if (removeBtn?.dataset?.outgoingRemoveKey != null) {
+    try {
+      const key = decodeURIComponent(removeBtn.dataset.outgoingRemoveKey);
+      if (key) removeOutgoingUnitEffectByKey(key);
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
 });
 
 el.viewBattle?.addEventListener("change", (e) => {

@@ -1765,3 +1765,128 @@ button:disabled {
   margin: 0.4rem 0;
   font-size: 0.88rem;
 }
+
+.battle-global-effect {
+  border-left: 3px solid var(--accent);
+  margin-top: 0.65rem;
+}
+
+.phase-spell-cast {
+  margin-top: 0.75rem;
+}
+
+.phase-spell-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.phase-spell-list-item {
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.phase-spell-list-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.phase-spell-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: flex-end;
+  margin-top: 0.5rem;
+}
+
+.phase-spell-field {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.phase-spell-field select {
+  width: 100%;
+  max-width: 22rem;
+}
+
+/* Tiroirs par phase (récap / rappels / effets cible ennemie) */
+.phase-drawer-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.phase-drawer {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: rgba(15, 18, 24, 0.45);
+  overflow: hidden;
+}
+
+.phase-drawer-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.55rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--accent);
+  user-select: none;
+}
+
+.phase-drawer-summary::-webkit-details-marker {
+  display: none;
+}
+
+.phase-drawer-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.15s ease;
+  opacity: 0.85;
+}
+
+.phase-drawer[open] .phase-drawer-summary::before {
+  transform: rotate(90deg);
+}
+
+.phase-drawer-body {
+  padding: 0 0.75rem 0.75rem;
+  border-top: 1px solid rgba(42, 49, 68, 0.65);
+}
+
+.outgoing-effects-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  font-size: 0.88rem;
+}
+
+.outgoing-effects-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(42, 49, 68, 0.5);
+}
+
+.outgoing-effects-list li:last-child {
+  border-bottom: none;
+}
+
+.outgoing-effects-list .btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.outgoing-effects-list .btn.secondary {
+  border-color: rgba(196, 92, 92, 0.45);
+  color: var(--danger);
+  background: rgba(196, 92, 92, 0.12);
+}
+
+.outgoing-effects-list .btn.secondary:hover {
+  background: rgba(196, 92, 92, 0.22);
+}

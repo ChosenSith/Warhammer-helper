@@ -63,6 +63,66 @@ body {
   box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.12);
 }
 
+.salon-roster-wrap {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.salon-roster-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.salon-roster {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.salon-roster-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(42, 49, 68, 0.6);
+  font-size: 0.92rem;
+}
+
+.salon-roster-item:last-child {
+  border-bottom: none;
+}
+
+.salon-roster-name {
+  font-weight: 600;
+  min-width: 6rem;
+}
+
+.salon-roster-team {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.salon-roster-ready {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.salon-roster-hint {
+  margin: 0.5rem 0 0;
+}
+
+.battle-salon-line {
+  margin: 0.35rem 0 0;
+  line-height: 1.35;
+}
+
 .panel.error-panel {
   border-color: #8b4a4a;
   background: rgba(196, 92, 92, 0.12);

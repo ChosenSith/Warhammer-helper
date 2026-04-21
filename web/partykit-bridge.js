@@ -1,6 +1,5 @@
 /**
- * Connexion WebSocket PartyKit + envoi debouncé des snapshots d’armée.
- * Les callbacks sont fournis par game-app.js (pas d’import de l’état global ici).
+ * Connexion WebSocket PartyKit + envoi debouncé des snapshots d’armée + messages salon.
  */
 import { createPartySocket } from "./partykit-client.js";
 import { applyRemoteArmySnapshot } from "./multiplayer-sync.js";
@@ -8,9 +7,20 @@ import { applyRemoteArmySnapshot } from "./multiplayer-sync.js";
 /** @type {WebSocket | null} */
 let socket = null;
 let debounceTimer = null;
+let helloTimer = null;
 const DEBOUNCE_MS = 450;
+const HELLO_MS = 22000;
 
-/** @type {null | { getSnapshot: () => object; getBattle: () => unknown; getMyTeamId: () => unknown; onApplied: () => void; onStatus?: (msg: string) => void }} */
+/** @type {null | {
+ *   getSnapshot: () => object;
+ *   getBattle: () => unknown;
+ *   getMyTeamId: () => unknown;
+ *   onApplied: () => void;
+ *   onStatus?: (msg: string) => void;
+ *   onSalonMessage?: (data: object) => void;
+ *   getSalonHelloPayload?: () => object;
+ *   onChannelOpen?: () => void;
+ * }} */
 let ctx = null;
 
 export function normalizePartyHost(host) {
@@ -25,6 +35,15 @@ export function isPartyConnected() {
     return !!(socket && socket.readyState === 1);
   } catch {
     return false;
+  }
+}
+
+export function sendPartyMessage(obj) {
+  if (!socket || socket.readyState !== 1) return;
+  try {
+    socket.send(JSON.stringify(obj));
+  } catch (e) {
+    console.warn("[PartyKit] sendPartyMessage", e);
   }
 }
 
@@ -53,11 +72,32 @@ export function schedulePartySnapshotPush() {
   }, DEBOUNCE_MS);
 }
 
+function startSalonHeartbeat() {
+  if (helloTimer) clearInterval(helloTimer);
+  helloTimer = setInterval(() => {
+    if (!ctx?.getSalonHelloPayload || !isPartyConnected()) return;
+    try {
+      const p = ctx.getSalonHelloPayload();
+      if (p) sendPartyMessage(p);
+    } catch (e) {
+      console.warn("[PartyKit] hello", e);
+    }
+  }, HELLO_MS);
+}
+
+function stopSalonHeartbeat() {
+  if (helloTimer) {
+    clearInterval(helloTimer);
+    helloTimer = null;
+  }
+}
+
 export function disconnectPartyKit() {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+  stopSalonHeartbeat();
   ctx = null;
   if (socket) {
     try {
@@ -69,15 +109,51 @@ export function disconnectPartyKit() {
   }
 }
 
+function dispatchMessage(data) {
+  const t = data && typeof data === "object" ? data.type : undefined;
+
+  if (t === "army_snapshot") {
+    const b = ctx?.getBattle?.();
+    if (b && typeof b === "object") {
+      applyRemoteArmySnapshot(
+        /** @type {{ opponentUnits?: unknown[] }} */ (b),
+        data,
+        ctx.getMyTeamId?.(),
+      );
+      try {
+        ctx?.onApplied?.();
+      } catch (e) {
+        console.warn("[PartyKit] onApplied", e);
+      }
+    }
+    return;
+  }
+
+  if (
+    t === "salon_hello" ||
+    t === "salon_ready" ||
+    t === "salon_presence"
+  ) {
+    try {
+      ctx?.onSalonMessage?.(data);
+    } catch (e) {
+      console.warn("[PartyKit] onSalonMessage", e);
+    }
+  }
+}
+
 /**
  * @param {object} opts
- * @param {string} opts.host — hôte PartyKit (sans https://)
- * @param {string} opts.room — code salon = id de room
- * @param {() => object} opts.getSnapshot — JSON complet à envoyer (inclut type, clientId, units…)
+ * @param {string} opts.host
+ * @param {string} opts.room
+ * @param {() => object} opts.getSnapshot
  * @param {() => unknown} opts.getBattle
  * @param {() => unknown} opts.getMyTeamId
- * @param {() => void} opts.onApplied — après fusion adverse (ex. renderBattle)
+ * @param {() => void} opts.onApplied
  * @param {(msg: string) => void} [opts.onStatus]
+ * @param {(data: object) => void} [opts.onSalonMessage]
+ * @param {() => object} [opts.getSalonHelloPayload]
+ * @param {() => void} [opts.onChannelOpen]
  */
 export async function connectPartyKit(opts) {
   disconnectPartyKit();
@@ -93,6 +169,9 @@ export async function connectPartyKit(opts) {
     getMyTeamId: opts.getMyTeamId,
     onApplied: opts.onApplied,
     onStatus: opts.onStatus,
+    onSalonMessage: opts.onSalonMessage,
+    getSalonHelloPayload: opts.getSalonHelloPayload,
+    onChannelOpen: opts.onChannelOpen,
   };
   opts.onStatus?.("Connexion…");
   const sock = await createPartySocket({ host, room });
@@ -100,6 +179,18 @@ export async function connectPartyKit(opts) {
   sock.addEventListener("open", () => {
     opts.onStatus?.("Connecté au salon.");
     sendSnapshotNow();
+    try {
+      const hello = ctx?.getSalonHelloPayload?.();
+      if (hello) sendPartyMessage(hello);
+    } catch (e) {
+      console.warn("[PartyKit] hello initial", e);
+    }
+    startSalonHeartbeat();
+    try {
+      ctx?.onChannelOpen?.();
+    } catch (e) {
+      console.warn("[PartyKit] onChannelOpen", e);
+    }
   });
   sock.addEventListener("message", (ev) => {
     let data;
@@ -108,20 +199,10 @@ export async function connectPartyKit(opts) {
     } catch {
       return;
     }
-    const b = ctx?.getBattle?.();
-    if (!b || typeof b !== "object") return;
-    applyRemoteArmySnapshot(
-      /** @type {{ opponentUnits?: unknown[] }} */ (b),
-      data,
-      ctx.getMyTeamId?.(),
-    );
-    try {
-      ctx?.onApplied?.();
-    } catch (e) {
-      console.warn("[PartyKit] onApplied", e);
-    }
+    dispatchMessage(data);
   });
   sock.addEventListener("close", () => {
+    stopSalonHeartbeat();
     opts.onStatus?.("Déconnecté du salon.");
   });
   sock.addEventListener("error", () => {

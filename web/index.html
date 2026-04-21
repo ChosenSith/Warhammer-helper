@@ -56,6 +56,11 @@
         <input type="text" id="setup-partykit-host" maxlength="120" autocomplete="off" spellcheck="false" placeholder="warhammer-helper-party.chosensith.partykit.dev" title="Sans https:// — déployé via npm run deploy dans le dossier party/" />
       </label>
       <p id="setup-partykit-status" class="hint small" aria-live="polite"></p>
+      <div id="setup-salon-roster-wrap" class="salon-roster-wrap" hidden>
+        <h3 class="salon-roster-title">Connectés au salon</h3>
+        <ul id="setup-salon-roster" class="salon-roster" aria-live="polite"></ul>
+        <p class="hint small salon-roster-hint">✓ = a lancé la partie sur son écran. L’hôte voit qui est prêt.</p>
+      </div>
       <p class="setup-global-actions">
         <button type="button" class="btn secondary" id="btn-partykit-connect" disabled>Connexion au salon</button>
       </p>
@@ -192,6 +197,7 @@
           Tour <strong id="battle-side" class="battle-side mine">ami</strong> ·
           <span id="battle-phase">Phase</span>
         </p>
+        <p id="battle-salon-line" class="battle-salon-line muted small" hidden></p>
       </div>
       <button type="button" class="btn secondary" id="btn-exit-battle">Quitter</button>
     </header>
@@ -331,6 +337,6 @@
     Sur GitHub Pages sans slash final, cela pointait vers /game-app.js (404).
     Un <script type="module" src="…"> utilise bien le document base URL (donc <base> s’applique).
   -->
-  <script type="module" src="game-app.js?v=salon1"></script>
+  <script type="module" src="game-app.js?v=salon2"></script>
 </body>
 </html>

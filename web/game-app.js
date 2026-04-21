@@ -1118,8 +1118,20 @@ async function connectPartyKitConfigured() {
       renderBattle();
     },
     onStatus: setPartyKitStatus,
+    onSalonMessage: handleSalonIncoming,
+    getSalonHelloPayload: () => ({
+      type: "salon_hello",
+      clientId: state.setup.syncClientId,
+      playerName: state.setup.playerName || "Joueur",
+      teamId: normalizeTeamId(state.setup.teamId),
+      roomCode: state.setup.roomCode || "",
+    }),
+    onChannelOpen: () => {
+      if (state.battle) sendSalonReady(true);
+    },
   });
   updatePartyKitConnectButton();
+  renderSalonRoster();
 }
 
 async function maybeAutoConnectPartyKit() {
@@ -1135,6 +1147,157 @@ async function maybeAutoConnectPartyKit() {
       "Connexion impossible — vérifie l’hôte, le code salon et le déploiement.",
     );
   }
+}
+
+/** Pairs connectés au salon PartyKit (clientId → nom, équipe, prêt). */
+const salonPeers = new Map();
+
+function clearSalonPeers() {
+  salonPeers.clear();
+  renderSalonRoster();
+}
+
+function mergeSalonPeer(data) {
+  const id = String(data.clientId ?? "").trim();
+  if (!id) return;
+  const prev = salonPeers.get(id);
+  const name = String(data.playerName ?? prev?.playerName ?? "Joueur").slice(
+    0,
+    40,
+  );
+  const teamId = normalizeTeamId(data.teamId ?? prev?.teamId ?? 1);
+  let ready = prev?.ready ?? false;
+  if (data.type === "salon_ready") ready = !!data.ready;
+  salonPeers.set(id, {
+    playerName: name,
+    teamId,
+    ready,
+    lastSeen: Date.now(),
+  });
+}
+
+function removeSalonPeer(clientId) {
+  const id = String(clientId ?? "").trim();
+  if (!id) return;
+  salonPeers.delete(id);
+  renderSalonRoster();
+}
+
+function handleSalonIncoming(data) {
+  if (!data || typeof data !== "object") return;
+  const t = data.type;
+  if (t === "salon_presence" && data.event === "leave") {
+    removeSalonPeer(data.clientId);
+    return;
+  }
+  if (t === "salon_hello" || t === "salon_ready") {
+    mergeSalonPeer(data);
+    pruneStaleSalonPeers();
+    renderSalonRoster();
+  }
+}
+
+function pruneStaleSalonPeers() {
+  const now = Date.now();
+  const maxAge = 120000;
+  const myId = String(state.setup.syncClientId ?? "").trim();
+  for (const [id, p] of salonPeers) {
+    if (id === myId) continue;
+    if (now - p.lastSeen > maxAge) salonPeers.delete(id);
+  }
+}
+
+function renderSalonRoster() {
+  const wrap = document.getElementById("setup-salon-roster-wrap");
+  const ul = document.getElementById("setup-salon-roster");
+  const battleLine = document.getElementById("battle-salon-line");
+  const rr = state.setup.roomRole;
+  const solo = rr === "solo";
+  const connected = partyKit.isPartyConnected();
+  pruneStaleSalonPeers();
+
+  const myId = String(state.setup.syncClientId ?? "").trim();
+  if (myId && connected && !solo && !salonPeers.has(myId)) {
+    mergeSalonPeer({
+      type: "salon_hello",
+      clientId: myId,
+      playerName: state.setup.playerName || "Joueur",
+      teamId: state.setup.teamId,
+    });
+  }
+
+  if (wrap) wrap.hidden = solo || !connected;
+
+  if (ul) {
+    const entries = Array.from(salonPeers.entries()).sort((a, b) => {
+      const ta = a[1].teamId - b[1].teamId;
+      if (ta !== 0) return ta;
+      return a[1].playerName.localeCompare(b[1].playerName, "fr");
+    });
+    ul.innerHTML = "";
+    for (const [, p] of entries) {
+      const li = document.createElement("li");
+      li.className = "salon-roster-item";
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "salon-roster-name";
+      nameSpan.textContent = p.playerName;
+      const teamSpan = document.createElement("span");
+      teamSpan.className = "salon-roster-team";
+      teamSpan.textContent = `Équipe ${p.teamId}`;
+      const readySpan = document.createElement("span");
+      readySpan.className = "salon-roster-ready";
+      readySpan.title = p.ready ? "Partie lancée" : "En préparation";
+      readySpan.textContent = p.ready ? "✓" : "…";
+      readySpan.setAttribute(
+        "aria-label",
+        p.ready ? "Prêt" : "Pas encore prêt",
+      );
+      li.append(nameSpan, teamSpan, readySpan);
+      ul.appendChild(li);
+    }
+  }
+
+  if (battleLine) {
+    if (solo || !connected || !state.battle) {
+      battleLine.hidden = true;
+      battleLine.textContent = "";
+    } else {
+      const entries = Array.from(salonPeers.entries()).sort((a, b) => {
+        const ta = a[1].teamId - b[1].teamId;
+        if (ta !== 0) return ta;
+        return a[1].playerName.localeCompare(b[1].playerName, "fr");
+      });
+      if (entries.length === 0) {
+        battleLine.hidden = true;
+      } else {
+        battleLine.hidden = false;
+        const readyN = entries.filter((e) => e[1].ready).length;
+        const parts = entries.map(
+          ([, p]) => `${p.playerName}${p.ready ? " ✓" : " …"}`,
+        );
+        battleLine.textContent = `Salon — ${readyN}/${entries.length} prêts · ${parts.join(" · ")}`;
+      }
+    }
+  }
+}
+
+function sendSalonReady(ready) {
+  if (!partyKit.isPartyConnected()) return;
+  partyKit.sendPartyMessage({
+    type: "salon_ready",
+    clientId: state.setup.syncClientId,
+    playerName: state.setup.playerName || "Joueur",
+    teamId: normalizeTeamId(state.setup.teamId),
+    ready: !!ready,
+  });
+  mergeSalonPeer({
+    type: "salon_ready",
+    clientId: state.setup.syncClientId,
+    playerName: state.setup.playerName || "Joueur",
+    teamId: state.setup.teamId,
+    ready: !!ready,
+  });
+  renderSalonRoster();
 }
 
 /** PV max issu du profil (premier nombre dans la chaîne). */
@@ -2065,10 +2228,12 @@ function renderSetup() {
           t.value === "host" || t.value === "guest" ? t.value : "solo";
         if (state.setup.roomRole === "solo") {
           partyKit.disconnectPartyKit();
+          clearSalonPeers();
           setPartyKitStatus("Mode local — pas de salon.");
         }
         persist();
         updatePartyKitConnectButton();
+        renderSalonRoster();
       });
     }
   }
@@ -2089,8 +2254,10 @@ function renderSetup() {
     partyConnectBtn.addEventListener("click", async () => {
       if (partyKit.isPartyConnected()) {
         partyKit.disconnectPartyKit();
+        clearSalonPeers();
         setPartyKitStatus("Déconnecté.");
         updatePartyKitConnectButton();
+        renderSalonRoster();
         return;
       }
       if (state.setup.roomRole === "solo") {
@@ -2117,6 +2284,7 @@ function renderSetup() {
     });
   }
   updatePartyKitConnectButton();
+  renderSalonRoster();
   const teamSel = document.getElementById("setup-team-id");
   if (teamSel) {
     if (!teamSel.dataset.optionsFilled) {
@@ -2547,10 +2715,13 @@ function showBattle() {
   el.viewSetup.hidden = true;
   el.viewBattle.hidden = false;
   renderBattle();
+  if (partyKit.isPartyConnected()) sendSalonReady(true);
 }
 
 function showSetup() {
+  if (partyKit.isPartyConnected()) sendSalonReady(false);
   partyKit.disconnectPartyKit();
+  clearSalonPeers();
   state.battle = null;
   state.instances = state.instances.filter((i) => !i.isInvocation);
   persist();
@@ -3395,6 +3566,7 @@ function renderBattle() {
   }
 
   renderEnemyBattleUI();
+  renderSalonRoster();
 }
 
 function renderUnitSidebar() {

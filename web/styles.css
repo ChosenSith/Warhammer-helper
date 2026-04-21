@@ -57,6 +57,12 @@ body {
   margin-bottom: 1rem;
 }
 
+/* Salon multijoueur : toujours visible en haut de page */
+#setup-multiplayer {
+  border-color: rgba(201, 162, 39, 0.45);
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.12);
+}
+
 .panel.error-panel {
   border-color: #8b4a4a;
   background: rgba(196, 92, 92, 0.12);

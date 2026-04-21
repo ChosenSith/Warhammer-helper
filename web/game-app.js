@@ -1904,6 +1904,12 @@ function renderSetup() {
   if (el.viewSetup) el.viewSetup.hidden = false;
   if (el.viewBattle) el.viewBattle.hidden = true;
   closeDrawers();
+  /* Jamais masquer le panneau salon (hors #setup-post-faction) — évite tout état résiduel. */
+  const salonPanel = document.getElementById("setup-multiplayer");
+  if (salonPanel) {
+    salonPanel.hidden = false;
+    salonPanel.removeAttribute("hidden");
+  }
   /* Aligner l’état sur une radio déjà cochée (ex. clic avant chargement du module) avant tout calcul d’UI. */
   if (el.setupFactionList) {
     const preChecked = el.setupFactionList.querySelector(

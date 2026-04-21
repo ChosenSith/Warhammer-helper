@@ -1,0 +1,13 @@
+# Si le site Netlify utilise ce dossier comme racine de publication (Base directory = web, Publish = .)
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"

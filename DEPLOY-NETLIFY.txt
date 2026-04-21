@@ -1,8 +1,25 @@
-Déploiement Netlify (anonyme) — généré automatiquement.
-URL du site : https://luminous-paprenjak-0dc87f.netlify.app
-Mot de passe d’accès (drop anonyme) : My-Drop-Site
+Netlify — URL du site
+======================
 
-Réclame le site sur Netlify dans les 60 minutes après le déploiement anonyme (sinon il expire).
-Ensuite : compte Netlify → Sites → ton site → Domain settings → HTTPS activé par défaut.
+L’adresse publique (https://…netlify.app ou ton domaine) se règle sur Netlify, pas dans le dépôt.
 
-Pour un déploiement durable sans mot de passe : netlify login puis netlify deploy --prod --dir=web
+1) Va sur https://app.netlify.com → sélectionne ton site (lié au dépôt GitHub).
+
+2) Site configuration → Domain management (ou « Domain settings »).
+
+3) Sous-domaine Netlify :
+   - repère la ligne du type xxx.netlify.app ;
+   - Options → Edit / Configure → choisis un nom disponible (ex. warhammer-helper-netlify) ;
+   - valide : la nouvelle URL devient https://TON-NOM.netlify.app
+
+4) Domaine personnalisé (optionnel) : « Add domain » et suis l’assistant DNS.
+
+5) Note l’URL finale ci-dessous pour t’y référer (fichier local, non lu par Netlify) :
+
+URL publique du helper :
+https://________________________.netlify.app
+
+---
+
+Publication du dossier web : voir netlify.toml (publish = "web").
+En CLI : netlify login puis netlify deploy --prod --dir=web

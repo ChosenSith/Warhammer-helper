@@ -1,4 +1,17 @@
-# Site statique : connecte ce dépôt à Netlify et laisse « Publish directory » = web,
-# ou : npx netlify-cli deploy --prod --dir=web
+# Publication : dossier web/ à la racine du dépôt.
+# Sur Netlify : Publish directory = web (ou laisse ce fichier guider le build).
+# L’URL se règle dans Netlify → Domain management.
+# CLI : npx netlify-cli deploy --prod --dir=web
 [build]
   publish = "web"
+
+# Réduit le cache des HTML pour voir vite les mises à jour (évite une vieille page sans « Salon »).
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"

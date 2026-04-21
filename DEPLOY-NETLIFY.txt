@@ -1,0 +1,8 @@
+Déploiement Netlify (anonyme) — généré automatiquement.
+URL du site : https://luminous-paprenjak-0dc87f.netlify.app
+Mot de passe d’accès (drop anonyme) : My-Drop-Site
+
+Réclame le site sur Netlify dans les 60 minutes après le déploiement anonyme (sinon il expire).
+Ensuite : compte Netlify → Sites → ton site → Domain settings → HTTPS activé par défaut.
+
+Pour un déploiement durable sans mot de passe : netlify login puis netlify deploy --prod --dir=web

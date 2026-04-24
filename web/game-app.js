@@ -1170,11 +1170,16 @@ function applyArmyPreset(preset) {
       const looksSoulblight = (u0?.keywords || []).some((k) =>
         String(k).includes("SEIGNEURS RUINEMÂNES"),
       );
+      const looksSeraphon = (u0?.keywords || []).some(
+        (k) => String(k).toUpperCase() === "SERAPHON",
+      );
       state.setup.factionId = looksIronjawz
         ? "peaux_vertes"
         : looksSoulblight
           ? "vampires"
-          : "khorne";
+          : looksSeraphon
+            ? "seraphon"
+            : "khorne";
     }
     fEntry = FACTIONS.find((f) => f.id === state.setup.factionId);
   }

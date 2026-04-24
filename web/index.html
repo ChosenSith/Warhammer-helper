@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AoS — Lames de Khorne (helper)</title>
+  <title>AoS — helper d’armée (multifactions)</title>
   <!-- Répertoire de la page (évite ./game-app.js → mauvaise racine si l’URL n’a pas de slash final, ex. GitHub Pages). -->
   <script>
     (function () {
@@ -68,7 +68,7 @@
 
     <section class="panel setup-faction-panel">
       <h2>Faction</h2>
-      <p class="hint small">Choisis ton armée : <strong>Seigneurs Ruinemânes</strong> (Soulblight), <strong>Peaux-Vertes</strong> (Mâchefers) ou <strong>Lames de Khorne</strong> — chaque faction a son catalogue, ses formations et ses rappels en partie.</p>
+      <p class="hint small">Choisis ton armée : <strong>Seigneurs Ruinemânes</strong> (Soulblight), <strong>Peaux-Vertes</strong> (Mâchefers), <strong>Lames de Khorne</strong> ou <strong>Seraphon</strong> — chaque faction a son catalogue, ses formations et ses rappels en partie. La liste complète (dont Seraphon) se recharge aussi dès que le script du catalogue a fini de se charger.</p>
       <form class="setup-faction-form" autocomplete="off" onsubmit="return false;">
         <!-- Rempli aussi par game-app.js ; présent dans le HTML pour l’affichage si le module JS échoue (file://, etc.). -->
         <div id="setup-factions" class="radio-list">
@@ -83,6 +83,10 @@
           <label class="radio-line">
             <input type="radio" name="faction" value="khorne" />
             Lames de Khorne
+          </label>
+          <label class="radio-line">
+            <input type="radio" name="faction" value="seraphon" />
+            Seraphon
           </label>
         </div>
       </form>

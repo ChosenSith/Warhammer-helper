@@ -27,6 +27,7 @@ import {
   isKhorneFactionId,
   isPeauxVertesFactionId,
   isSoulblightFactionId,
+  isSeraphonFactionId,
   isPlayableFactionId,
   IRONJAWZ_BATTLE_TRAITS,
   SOULBLIGHT_BATTLE_TRAITS,
@@ -35,6 +36,13 @@ import {
   SOULBLIGHT_ARTIFACTS,
   SOULBLIGHT_CONVOCATION_SPELLS,
   MELEE_PROXIMITY_RECAP_SOULBLIGHT,
+  SERAPHON_ASTERISMS,
+  SERAPHON_BATTLE_TRAITS,
+  SERAPHON_POURSUIVRE_INTRO,
+  SERAPHON_SPELLS,
+  getSeraphonAsterismById,
+  MELEE_PROXIMITY_RECAP_SERAPHON,
+  seraphonUnitIsMonsterSeraphon,
 } from "./data/khorne-catalog.js";
 import { buildUniversalPcDrawerHtml } from "./data/universal-pc-rules.js";
 import {
@@ -94,7 +102,8 @@ function isPlayerTurn(b) {
 
 /** Rappel fort (plein texte) pour formation / trait / artefact selon phase et camp actif. */
 function showPowerFullForPhase(item, ph, b) {
-  if (!item?.phases?.includes(ph.id)) return false;
+  if (!item?.phases?.length || !item.phases.includes(ph.id)) return false;
+  if (ph.id === "hero" && item.bothHeroPhases) return true;
   if (item.playerTurnOnly && !isPlayerTurn(b)) {
     if (ph.id === "end" && item.endPhaseBothSides) {
       /* rappel La faim / autres fin de tour des deux camps */
@@ -133,6 +142,10 @@ function isPeauxVertesFactionContext() {
 
 function isSoulblightFactionContext() {
   return isSoulblightFactionId(state.setup?.factionId);
+}
+
+function isSeraphonFactionContext() {
+  return isSeraphonFactionId(state.setup?.factionId);
 }
 
 function soulblightInstanceAliveByCatalogId(catalogId) {
@@ -205,6 +218,9 @@ function formatAttacksCellWithMeleeAtkBonus(w, inst, u, extraAtk) {
   if (w.dynamicAttacks === "vhordrai_griffes") {
     atkCell = String(getVhordraiGriffesAttacks(inst, u));
   }
+  if (w.dynamicAttacks === "carnosaur_machoires") {
+    atkCell = String(getCarnosaurMassiveJawAttacks(inst, u));
+  }
   if (!extraAtk || inst.destroyed) return atkCell;
   if (w.dynamicAttacks === "belakor_lame") {
     const n = parseInt(atkCell, 10);
@@ -215,6 +231,10 @@ function formatAttacksCellWithMeleeAtkBonus(w, inst, u, extraAtk) {
     if (Number.isFinite(n)) return `${atkCell} → ${n + extraAtk}`;
   }
   if (w.dynamicAttacks === "vhordrai_griffes") {
+    const n = parseInt(atkCell, 10);
+    if (Number.isFinite(n)) return `${atkCell} → ${n + extraAtk}`;
+  }
+  if (w.dynamicAttacks === "carnosaur_machoires") {
     const n = parseInt(atkCell, 10);
     if (Number.isFinite(n)) return `${atkCell} → ${n + extraAtk}`;
   }
@@ -545,6 +565,314 @@ function buildSoulblightBattleEncartsHtml(ph, b) {
   return h;
 }
 
+/** Rappels Seraphon (Asterisme, hôte, trait, trésor) par phase. */
+function buildSeraphonBattleEncartsHtml(ph, b) {
+  if (!isSeraphonFactionContext() || !b || ph.id === "deployment") return "";
+  const aid = String(state.setup.seraphonAsterismId || "").trim();
+  const ast = getSeraphonAsterismById(aid);
+  const form = getFormationById(state.setup.formationId);
+  const traitsL = getHeroicTraitsForFaction(state.setup.factionId);
+  const artsL = getArtifactsForFaction(state.setup.factionId);
+  const trait = traitsL.find((t) => t.id === state.setup.traitId);
+  const art = artsL.find((a) => a.id === state.setup.artifactId);
+  const traitH = state.setup.traitHeroInstanceId
+    ? state.instances.find((i) => i.id === state.setup.traitHeroInstanceId)
+    : null;
+  const artH = state.setup.artifactHeroInstanceId
+    ? state.instances.find((i) => i.id === state.setup.artifactHeroInstanceId)
+    : null;
+  const traitHn = traitH
+    ? getUnitById(traitH.catalogId)?.name || "Héros"
+    : "—";
+  const artHn = artH ? getUnitById(artH.catalogId)?.name || "Héros" : "—";
+  const ser = b.seraphon || (b.seraphon = { itzlPursue: false, coatlUsed: false });
+  const mine = isPlayerTurn(b);
+  const parts = [];
+
+  if (ast && ph.id === "combat" && mine) {
+    if (ast.id === "ser_asterism_itzl") {
+      const on = !!ser.itzlPursue;
+      let h = `<div class="panel-inner seraphon-encart seraphon-encart--itzl">`;
+      h += `<h4 class="subh">Asterisme — ${escapeHtml(ast.name)}</h4>`;
+      h += `<p class="muted small">${escapeHtml(ast.summary)}</p>`;
+      h += `<p class="muted small"><strong>« Poursuivre le Grand Plan » (3e manche)</strong> : ${escapeHtml(ast.pursueCondition || "")}</p>`;
+      h += `<label class="tracker-label"><input type="checkbox" class="seraphon-itzl-pursue" ${on ? "checked" : ""} /> Condition Poursuivre remplie (ex. 3+ unités ennemies détruites) — afficher le rappel de buff Saurus</label>`;
+      if (on) {
+        h += `<ul class="seraphon-saurus-itzl-list">`;
+        for (const inst of state.instances) {
+          if (inst.destroyed) continue;
+          const u = getUnitById(inst.catalogId);
+          if (!u || !unitKeyword(u, "SAURUS")) continue;
+          h += `<li><span class="phase-unit-name">${escapeHtml(u.name)}${formatFigurinesHtmlSuffix(inst, u)}</span> <span class="seraphon-buff-pill">Itzl : Compagnon — Crit (2 touches)</span></li>`;
+        }
+        h += `</ul>`;
+      }
+      h += `</div>`;
+      parts.push(h);
+    }
+    if (ast.id === "ser_asterism_quetzl") {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--quetzl"><h4 class="subh">Asterisme — ${escapeHtml(ast.name)}</h4>
+        <p class="muted small">${escapeHtml(ast.summary)}</p>
+        <p class="muted small"><strong>Activation :</strong> attaques de mêlée contre des <strong>SAURUS</strong> <strong>entièrement</strong> dans <strong>ton</strong> territoire (rappel : phase de mêlée, tour ami et ennemi). <strong>« Poursuivre » :</strong> ${escapeHtml(ast.pursueCondition || "")}</p></div>`,
+      );
+    }
+  }
+
+  if (ast && ph.id === "combat" && !mine && ast.id === "ser_asterism_quetzl") {
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--quetzl"><h4 class="subh">Asterisme — ${escapeHtml(ast.name)} (tour adverse)</h4>
+      <p class="muted small">Rappel sauvegarde : tes <strong>SAURUS</strong> entièrement dans ton territoire : <strong>−1 Perforant reçu</strong> (attaques de mêlée).</p></div>`,
+    );
+  }
+
+  if (ast && ph.id === "movement" && mine && ast.id === "ser_asterism_sotek") {
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--sotek"><h4 class="subh">Asterisme — ${escapeHtml(ast.name)}</h4>
+      <p class="muted small"><strong>+2 Mouvement</strong> sur les unités <strong>SAURUS</strong> (tout le tour de mouvement / charges).</p>
+      <p class="muted small"><strong>« Poursuivre » (3e manche) :</strong> ${escapeHtml(ast.pursueCondition || "")}</p></div>`,
+    );
+  }
+
+  if (ast && ph.id === "hero" && mine && ast.id === "ser_asterism_tepok") {
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--tepok"><h4 class="subh">Asterisme — ${escapeHtml(ast.name)}</h4>
+      <p class="muted small"><strong>+1</strong> aux jets d’<strong>incantation</strong> des <strong>SAURUS</strong>.</p>
+      <p class="muted small"><strong>« Poursuivre » (3e manche) :</strong> ${escapeHtml(ast.pursueCondition || "")} — (à suivre côté table : Skinks sur le terrain, hors mêlée / non détruits.)</p></div>`,
+    );
+  }
+
+  if (form) {
+    if (form.id === "ser_formation_eternal_starhost" && ph.id === "movement" && mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--formation"><h4 class="subh">Hôte — ${escapeHtml(form.name)}</h4>
+        <p class="muted small"><strong>Translocation céleste</strong> (ta phase de mouvement) : Monstre <strong>SAURUS</strong> entièrement à 12" d'un <strong>SLANN à pied</strong> — 3+ pour replier / replacer &gt;9" des ennemis.</p></div>`,
+      );
+    }
+    if (form.id === "ser_formation_shadowstrike_starhost" && ph.id === "shooting" && mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--formation"><h4 class="subh">Hôte — ${escapeHtml(form.name)}</h4>
+        <p class="muted small">Rappel ciblé ici (phase de tir allié) : note <strong>Agiles et rapides</strong> côté table (règle d’Hôte, souvent en phase de mouvement en jeu). ${escapeHtml(form.summary)}</p></div>`,
+      );
+    }
+    if (form.id === "ser_formation_sunclaw_starhost" && ph.id === "end") {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--formation"><h4 class="subh">Hôte — ${escapeHtml(form.name)} (fin de tour — les deux camps)</h4>
+        <p class="muted small">Rappel <strong>Sunclaw / Vengeance d’Azyr</strong> (usage typique : phase de tir — voir fiche) : ${escapeHtml(form.summary)}</p></div>`,
+      );
+    }
+  }
+
+  if (trait && state.setup.traitId === "ser_beastmaster" && ph.id === "movement" && mine) {
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--trait"><h4 class="subh">Trait — ${escapeHtml(trait.name)}</h4>
+      <p class="muted small">Porteur : <strong>${escapeHtml(traitHn)}</strong> — ${escapeHtml(trait.summary)}</p></div>`,
+    );
+  }
+  if (trait && state.setup.traitId === "ser_reptilian_cunning" && ph.id === "combat" && mine) {
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--trait"><h4 class="subh">Trait — ${escapeHtml(trait.name)}</h4>
+      <p class="muted small">Porteur : <strong>${escapeHtml(traitHn)}</strong> — ${escapeHtml(trait.summary)}</p></div>`,
+    );
+  }
+  if (trait && state.setup.traitId === "ser_being_of_stars" && (ph.id === "shooting" || ph.id === "combat")) {
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--trait"><h4 class="subh">Trait — ${escapeHtml(trait.name)}${!mine ? " (tour adverse)" : ""}</h4>
+      <p class="muted small">Porteur : <strong>${escapeHtml(traitHn)}</strong> — ignore les modificateurs aux sauvegardes (tir &amp; mêlée).</p></div>`,
+    );
+  }
+
+  if (art && ph.id === "hero" && mine) {
+    if (art.id === "ser_incandescent_rectrices" && state.setup.artifactId === art.id) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--art"><h4 class="subh">Trésor — ${escapeHtml(art.name)}</h4>
+        <p class="muted small">Porteur : <strong>${escapeHtml(artHn)}</strong> — ${escapeHtml(art.summary)}</p></div>`,
+      );
+    }
+    if (art.id === "ser_coatl_familiar" && state.setup.artifactId === art.id) {
+      if (ser.coatlUsed) {
+        parts.push(
+          `<div class="panel-inner seraphon-encart seraphon-encart--art seraphon-encart--coatl-spent"><h4 class="subh">Trésor — ${escapeHtml(art.name)}</h4>
+          <p class="muted small">Déjà utilisé cette bataille.</p></div>`,
+        );
+      } else {
+        parts.push(
+          `<div class="panel-inner seraphon-encart seraphon-encart--art"><h4 class="subh">Trésor — ${escapeHtml(art.name)}</h4>
+          <p class="muted small">Porteur : <strong>${escapeHtml(artHn)}</strong> — 1×/bataille, réaction : +D6 à l’incantation d’un <strong>SLANN à pied</strong> au mêlée. Marque quand c’est consommé :</p>
+          <label class="tracker-label"><input type="checkbox" class="seraphon-coatl-spent" /> Coatl déjà utilisé (ne plus afficher aux tours suivants)</label></div>`,
+        );
+      }
+    }
+  }
+  if (art && art.id === "ser_bloodrage_pendant" && state.setup.artifactId === art.id && ph.id === "combat" && mine) {
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--art"><h4 class="subh">Trésor — ${escapeHtml(art.name)}</h4>
+      <p class="muted small">Porteur : <strong>${escapeHtml(artHn)}</strong> — ${escapeHtml(art.summary)}</p></div>`,
+    );
+  }
+
+  if (ph.id === "hero" && mine) {
+    const spellRows = SERAPHON_SPELLS.map(
+      (s) =>
+        `<li><strong>${escapeHtml(s.name)}</strong> (incant. ${escapeHtml(s.cast)}${s.lore ? ` — ${escapeHtml(s.lore)}` : ""}) : ${escapeHtml(s.summary)}</li>`,
+    ).join("");
+    if (spellRows) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--spells"><h4 class="subh">Littératures — sorts (ta phase des héros)</h4>
+        <p class="muted small">Chaque incantation se joue en <strong>ta</strong> phase des héros (sauf précision livre) :</p>
+        <ul class="seraphon-spell-recap-list">${spellRows}</ul></div>`,
+      );
+    }
+  }
+
+  const kroakLive = state.instances.find(
+    (i) =>
+      !i.destroyed && getUnitById(i.catalogId)?.id === "ser_seigneur_kroak",
+  );
+  if (kroakLive && ph.id === "hero" && mine) {
+    const ku = getUnitById("ser_seigneur_kroak");
+    const aWar = (ku?.abilities || []).find((a) =>
+      String(a.name).includes("Délivrance"),
+    );
+    const aVas = (ku?.abilities || []).find((a) =>
+      String(a.name).includes("Vassal"),
+    );
+    const aSup = (ku?.abilities || []).find((a) =>
+      String(a.name).includes("Suprême"),
+    );
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--kroak"><h4 class="subh">Seigneur Kroak — rappels (ta phase des héros)</h4>
+      <p class="muted small"><strong>Délivrance céleste (sort de guerre)</strong> : ${aWar ? escapeHtml(aWar.summary) : "plusieurs cibles, BM."}</p>
+      <p class="muted small"><strong>Vassal arcanique</strong> : ${aVas ? escapeHtml(aVas.summary) : "1×/tour, autre SLANN."}</p>
+      <p class="muted small"><strong>Suprême maître de l’ordre (passif)</strong> : ${aSup ? escapeHtml(aSup.summary) : "bonus d’ordre, incantation, bannissements — voir fiche."}</p></div>`,
+    );
+  }
+  if (kroakLive && ph.id === "end") {
+    const dead = (getUnitById("ser_seigneur_kroak")?.abilities || []).find(
+      (a) => String(a.name).includes("Morts depuis"),
+    );
+    parts.push(
+      `<div class="panel-inner seraphon-encart seraphon-encart--kroak-end"><h4 class="subh">Seigneur Kroak — ${dead ? escapeHtml(dead.name) : "Morts depuis des éons innombrables"}</h4>
+      <p class="muted small">À chaque <strong>fin de tour</strong> (manche) : ${dead ? escapeHtml(dead.summary) : "3D6 + dégâts subis, 20+ = détruit, sinon soigne 18 (si blessé)."}</p></div>`,
+    );
+  }
+
+  const hasSaurusWar = state.instances.some(
+    (i) =>
+      !i.destroyed &&
+      getUnitById(i.catalogId)?.id === "ser_saurus_guerriers",
+  );
+  if (hasSaurusWar) {
+    const uSw = getUnitById("ser_saurus_guerriers");
+    const ab = (uSw?.abilities || [])[0];
+    const txt = ab ? escapeHtml(ab.summary) : "—";
+    if (ph.id === "combat" && mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--saurus"><h4 class="subh">Guerriers Saurus — Cohortes en ordre</h4>
+        <p class="muted small"><strong>Phase de mêlée (ton tour)</strong> : ${txt}</p></div>`,
+      );
+    }
+    if ((ph.id === "shooting" || ph.id === "combat") && !mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--saurus"><h4 class="subh">Guerriers Saurus — Cohortes en ordre (tour adverse)</h4>
+        <p class="muted small">Rappel passif (tir / mêlée ennemis) : ${txt}</p></div>`,
+      );
+    }
+  }
+
+  const chotec = state.instances.find(
+    (i) =>
+      !i.destroyed && getUnitById(i.catalogId)?.id === "ser_rejeton_chotec",
+  );
+  if (chotec) {
+    const uc = getUnitById("ser_rejeton_chotec");
+    const acid = (uc?.abilities || []).find((a) =>
+      String(a.name).toLowerCase().includes("soufre"),
+    );
+    const aco = (uc?.abilities || []).find((a) =>
+      String(a.name).toLowerCase().includes("acolyte"),
+    );
+    if (ph.id === "shooting" && mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--chotec"><h4 class="subh">Rejeton de Chotec — ${acid ? escapeHtml(acid.name) : "Flamme au soufre acide"}</h4>
+        <p class="muted small">Phase de <strong>tir (ton tour)</strong> : ${acid ? escapeHtml(acid.summary) : ""}</p></div>`,
+      );
+    }
+    if (ph.id === "end" && mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--chotec"><h4 class="subh">Rejeton de Chotec — ${aco ? escapeHtml(aco.name) : "Acolytes du soleil"}</h4>
+        <p class="muted small">Fin de <strong>ton tour</strong> (allié) : ${aco ? escapeHtml(aco.summary) : ""}</p></div>`,
+      );
+    }
+  }
+
+  const krox = state.instances.some(
+    (i) =>
+      !i.destroyed &&
+      getUnitById(i.catalogId)?.id === "ser_kroxigor_guerre_engloutie",
+  );
+  if (krox) {
+    const uk = getUnitById("ser_kroxigor_guerre_engloutie");
+    const sp = (uk?.abilities || []).find((a) =>
+      String(a.name).toLowerCase().includes("sotek"),
+    );
+    const hvy = (uk?.abilities || []).find((a) =>
+      String(a.name).toLowerCase().includes("peau"),
+    );
+    if (ph.id === "combat") {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--krox"><h4 class="subh">Kroxigor — ${sp ? escapeHtml(sp.name) : "Rejeton de Sotek"}</h4>
+        <p class="muted small"><strong>Phase de mêlée</strong>${mine ? " (ton tour)" : " (tour adverse)"} : ${sp ? escapeHtml(sp.summary) : ""}</p></div>`,
+      );
+    }
+    if (ph.id === "shooting" && !mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--krox"><h4 class="subh">Kroxigor — ${hvy ? escapeHtml(hvy.name) : "Peau d’écailles lourde"}</h4>
+        <p class="muted small"><strong>Phase de tir de l’adversaire</strong> (tirs envers toi) : ${hvy ? escapeHtml(hvy.summary) : ""}</p></div>`,
+      );
+    }
+  }
+
+  const ob = state.instances.find(
+    (i) =>
+      !i.destroyed &&
+      getUnitById(i.catalogId)?.id === "ser_oldblood_carnosaure",
+  );
+  if (ob) {
+    const uo = getUnitById("ser_oldblood_carnosaure");
+    const sph = (uo?.abilities || []).find((a) =>
+      String(a.name).toLowerCase().includes("fer de lance"),
+    );
+    const ter = (uo?.abilities || []).find((a) =>
+      String(a.name).toLowerCase().includes("terreur"),
+    );
+    const bl = (uo?.abilities || []).find((a) =>
+      String(a.name).toLowerCase().includes("frénésie") ||
+      String(a.name).toLowerCase().includes("blood"),
+    );
+    if (ph.id === "charge" && mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--oldblood"><h4 class="subh">Vétéran Saurus (Carnosaure) — ${sph ? escapeHtml(sph.name) : "Fer de lance de la charge"}</h4>
+        <p class="muted small">Phase de <strong>charge (ton tour)</strong> : ${sph ? escapeHtml(sph.summary) : ""}</p></div>`,
+      );
+    }
+    if (ph.id === "end" && !mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--oldblood"><h4 class="subh">Vétéran Saurus (Carnosaure) — ${ter ? escapeHtml(ter.name) : "Terreur"}</h4>
+        <p class="muted small">Fin de <strong>tour de l’adversaire</strong> : ${ter ? escapeHtml(ter.summary) : ""}</p></div>`,
+      );
+    }
+    if (ph.id === "combat" && mine) {
+      parts.push(
+        `<div class="panel-inner seraphon-encart seraphon-encart--oldblood"><h4 class="subh">Vétéran Saurus (Carnosaure) — ${bl ? escapeHtml(bl.name) : "Frénésie sanguine"}</h4>
+        <p class="muted small">Phase de <strong>mêlée (ton tour)</strong> : ${bl ? escapeHtml(bl.summary) : ""}</p></div>`,
+      );
+    }
+  }
+
+  return parts.join("");
+}
+
 function unitIsPriestProfile(u) {
   if (!u) return false;
   if (u.isPriest === true) return true;
@@ -589,6 +917,8 @@ function defaultGameState() {
       partyHost: DEFAULT_PARTYKIT_HOST,
       /** Identifiant stable par appareil / onglet pour fusionner les snapshots adverses. */
       syncClientId: "",
+      /** Seraphon — Asterisme du Grand Plan (`ser_asterism_*`). */
+      seraphonAsterismId: "",
     },
     instances: [],
     battle: null,
@@ -628,6 +958,26 @@ function loadState() {
     if (s.setup.syncClientId == null) s.setup.syncClientId = "";
     else s.setup.syncClientId = String(s.setup.syncClientId);
     if (!s.setup.syncClientId.trim()) s.setup.syncClientId = uid();
+    if (s.setup.seraphonAsterismId == null) s.setup.seraphonAsterismId = "";
+    if (isSeraphonFactionId(s.setup.factionId)) {
+      if (
+        !SERAPHON_ASTERISMS.some((a) => a.id === s.setup.seraphonAsterismId)
+      ) {
+        s.setup.seraphonAsterismId = SERAPHON_ASTERISMS[0]?.id ?? "";
+      }
+      const sForms = getFormationsForFaction("seraphon");
+      if (s.setup.formationId && !sForms.some((f) => f.id === s.setup.formationId)) {
+        s.setup.formationId = sForms[0]?.id ?? "";
+      }
+      const sTraits = getHeroicTraitsForFaction("seraphon");
+      if (s.setup.traitId && !sTraits.some((t) => t.id === s.setup.traitId)) {
+        s.setup.traitId = sTraits[0]?.id ?? "";
+      }
+      const sArts = getArtifactsForFaction("seraphon");
+      if (s.setup.artifactId && !sArts.some((a) => a.id === s.setup.artifactId)) {
+        s.setup.artifactId = sArts[0]?.id ?? "";
+      }
+    }
     if (Array.isArray(data.instances)) {
       s.instances = data.instances;
       for (const inst of s.instances) {
@@ -695,6 +1045,14 @@ function loadState() {
           s.battle.remoteUnitEffectsByClient = {};
         if (!Array.isArray(s.battle.myOutgoingUnitEffects))
           s.battle.myOutgoingUnitEffects = [];
+        if (!s.battle.seraphon) {
+          s.battle.seraphon = { itzlPursue: false, coatlUsed: false };
+        } else {
+          if (typeof s.battle.seraphon.itzlPursue !== "boolean")
+            s.battle.seraphon.itzlPursue = false;
+          if (typeof s.battle.seraphon.coatlUsed !== "boolean")
+            s.battle.seraphon.coatlUsed = false;
+        }
       }
     }
     const battleActive = isPersistedBattleActive(s.battle);
@@ -765,6 +1123,7 @@ function buildPresetFromCurrentState(label) {
         : "solo",
     playerName: state.setup.playerName || "",
     partyHost: state.setup.partyHost || "",
+    seraphonAsterismId: state.setup.seraphonAsterismId || "",
     instances,
   };
 }
@@ -858,6 +1217,15 @@ function applyArmyPreset(preset) {
     preset.artifactId && artList.some((a) => a.id === preset.artifactId)
       ? preset.artifactId
       : artList[0]?.id || "";
+  if (isSeraphonFactionId(pfid)) {
+    state.setup.seraphonAsterismId =
+      preset.seraphonAsterismId &&
+      SERAPHON_ASTERISMS.some((a) => a.id === preset.seraphonAsterismId)
+        ? preset.seraphonAsterismId
+        : SERAPHON_ASTERISMS[0]?.id || "";
+  } else {
+    state.setup.seraphonAsterismId = "";
+  }
 
   state.instances = nextInstances;
   state.setup.traitHeroInstanceId =
@@ -880,23 +1248,52 @@ function buildSetupArmyRecapHtml() {
   const traitTitle =
     isKhorneFactionId(fid) ?
       "Traits héroïques (Massacreur de peuples)"
-    : "Traits héroïques";
+    : isSeraphonFactionId(fid) ?
+        "Traits héroïques (disciplines célestes, Héros)"
+      : "Traits héroïques";
   const artTitle =
-    isKhorneFactionId(fid) ? "Artefacts (Meurtriers)" : "Artefacts de pouvoir";
+    isKhorneFactionId(fid) ? "Artefacts (Meurtriers)" : isSeraphonFactionId(
+        fid,
+      ) ?
+        "Trésors des Anciens (Héros)"
+      : "Artefacts de pouvoir";
   let h = '<div class="setup-recap-columns">';
-  h += '<div class="setup-recap-col"><h3 class="setup-recap-sub">Formations de bataille</h3><ul class="setup-recap-list">';
+  if (isSeraphonFactionId(fid)) {
+    h += '<div class="setup-recap-col setup-recap-col--seraphon-grand-plan"><h3 class="setup-recap-sub">Grand Plan — Asterisme</h3><ul class="setup-recap-list">';
+    const chosen = getSeraphonAsterismById(state.setup.seraphonAsterismId);
+    h += `<li><strong>${chosen ? escapeHtml(chosen.name) : "—"}</strong><p class="muted small setup-recap-line">${chosen ? escapeHtml(chosen.summary) : ""}</p>`;
+    h += `<p class="muted small setup-recap-line"><em>Poursuivre (3e manche) :</em> ${chosen ? escapeHtml(chosen.pursueCondition || "") : ""}</p></li>`;
+    h += `</ul><p class="muted small setup-recap-line">${escapeHtml(SERAPHON_POURSUIVRE_INTRO)} Voir la liste des conditions pour chaque Asterisme dans les choix ci-dessus.</p></div>`;
+  }
+  h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${
+    isSeraphonFactionId(fid) ?
+      "Formations (Hôtes d’étoile)"
+    : "Formations de bataille"
+  }</h3><ul class="setup-recap-list">`;
   for (const f of formations) {
-    h += `<li><strong>${escapeHtml(f.name)}</strong><span class="muted small"> — ${escapeHtml(f.ability)}</span><p class="muted small setup-recap-line">${escapeHtml(f.summary)}</p></li>`;
+    h += `<li><strong>${escapeHtml(f.name)}</strong><span class="muted small"> — ${escapeHtml(f.ability)}</span><p class="muted small setup-recap-line">${escapeHtml(f.summary)}</p>`;
+    if (f.setupRecap) {
+      h += `<p class="muted small setup-recap-line setup-recap-rappel">${f.setupRecap}</p>`;
+    }
+    h += `</li>`;
   }
   h += "</ul></div>";
   h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${escapeHtml(traitTitle)}</h3><ul class="setup-recap-list">`;
   for (const t of traits) {
-    h += `<li><strong>${escapeHtml(t.name)}</strong><p class="muted small setup-recap-line">${escapeHtml(t.summary)}</p></li>`;
+    h += `<li><strong>${escapeHtml(t.name)}</strong><p class="muted small setup-recap-line">${escapeHtml(t.summary)}</p>`;
+    if (t.setupRecap) {
+      h += `<p class="muted small setup-recap-line setup-recap-rappel">${t.setupRecap}</p>`;
+    }
+    h += `</li>`;
   }
   h += "</ul></div>";
   h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${escapeHtml(artTitle)}</h3><ul class="setup-recap-list">`;
   for (const a of artifacts) {
-    h += `<li><strong>${escapeHtml(a.name)}</strong><p class="muted small setup-recap-line">${escapeHtml(a.summary)}</p></li>`;
+    h += `<li><strong>${escapeHtml(a.name)}</strong><p class="muted small setup-recap-line">${escapeHtml(a.summary)}</p>`;
+    if (a.setupRecap) {
+      h += `<p class="muted small setup-recap-line setup-recap-rappel">${a.setupRecap}</p>`;
+    }
+    h += `</li>`;
   }
   h += "</ul></div></div>";
   return h;
@@ -1336,10 +1733,23 @@ function getFigurineCount(inst, u) {
  */
 function getWoundsMaxInst(inst, u) {
   if (!u) return null;
+  let base;
   if (typeof u.woundsPerModel === "number") {
-    return getFigurineCount(inst, u) * u.woundsPerModel;
+    base = getFigurineCount(inst, u) * u.woundsPerModel;
+  } else {
+    base = getWoundsMaxFromProfile(u);
   }
-  return getWoundsMaxFromProfile(u);
+  if (base == null) return null;
+  if (
+    isSeraphonFactionId(state.setup?.factionId) &&
+    state.setup.formationId === "ser_formation_thunderquake_starhost" &&
+    seraphonUnitIsMonsterSeraphon(u)
+  ) {
+    if (typeof u.woundsPerModel === "number")
+      return base + getFigurineCount(inst, u) * 2;
+    return base + 2;
+  }
+  return base;
 }
 
 /** PV restants (nombre saisi), bornés au max ; 0 si détruite. */
@@ -1462,6 +1872,17 @@ function getVhordraiGriffesAttacks(inst, u) {
   if (cur === "" || cur == null) return "7";
   const lost = maxW - Number(cur);
   return lost >= 10 ? "5" : "7";
+}
+
+/** Carnosaure — Mâchoires massives : 3 A par défaut, 2 si 10+ dégâts alloués (PV rest. ≤4 sur 14). */
+function getCarnosaurMassiveJawAttacks(inst, u) {
+  if (u?.id !== "ser_oldblood_carnosaure") return null;
+  const maxW = getWoundsMaxInst(inst, u);
+  const cur = inst?.woundsCurrent;
+  if (maxW == null) return "3";
+  if (cur === "" || cur == null) return "3";
+  const lost = maxW - Number(cur);
+  return lost >= 10 ? "2" : "3";
 }
 
 function waaaghVictoryMeleeAttackBonus(inst, u, w) {
@@ -1667,6 +2088,9 @@ function formatAttacksCellWithRage(w, inst, u, rageBonus) {
   if (w.dynamicAttacks === "vhordrai_griffes") {
     atkCell = String(getVhordraiGriffesAttacks(inst, u));
   }
+  if (w.dynamicAttacks === "carnosaur_machoires") {
+    atkCell = String(getCarnosaurMassiveJawAttacks(inst, u));
+  }
   if (!rageBonus || inst.destroyed) return atkCell;
   if (w.dynamicAttacks === "belakor_lame") {
     const n = parseInt(atkCell, 10);
@@ -1677,6 +2101,10 @@ function formatAttacksCellWithRage(w, inst, u, rageBonus) {
     if (Number.isFinite(n)) return `${n} → ${n + 1}`;
   }
   if (w.dynamicAttacks === "vhordrai_griffes") {
+    const n = parseInt(atkCell, 10);
+    if (Number.isFinite(n)) return `${n} → ${n + 1}`;
+  }
+  if (w.dynamicAttacks === "carnosaur_machoires") {
     const n = parseInt(atkCell, 10);
     if (Number.isFinite(n)) return `${n} → ${n + 1}`;
   }
@@ -2339,7 +2767,9 @@ function renderSetup() {
           ? "Trait héroïque (Mâchefers)"
           : isSoulblightFactionId(factionId)
             ? "Trait héroïque (Seigneurs Ruinemânes)"
-            : "Trait héroïque";
+            : isSeraphonFactionId(factionId)
+              ? "Discipline céleste (trait héroïque)"
+              : "Trait héroïque";
   }
   if (setupHeadingArtifact) {
     setupHeadingArtifact.textContent =
@@ -2349,7 +2779,64 @@ function renderSetup() {
           ? "Artefact de pouvoir"
           : isSoulblightFactionId(factionId)
             ? "Artefact d’armée"
-            : "Artefact";
+            : isSeraphonFactionId(factionId)
+              ? "Trésor des Anciens (artefact)"
+              : "Artefact";
+  }
+  const setupFormationTitle = document.getElementById("setup-formation-title");
+  if (setupFormationTitle) {
+    setupFormationTitle.textContent = isSeraphonFactionId(factionId)
+      ? "Hôte d’étoile (formation de bataille)"
+      : "Formation de bataille";
+  }
+  const setupSeraphonBlock = document.getElementById("setup-seraphon-asterism");
+  const setupSeraphonList = document.getElementById(
+    "setup-seraphon-asterism-list",
+  );
+  const setupSeraphonPoursuivre = document.getElementById(
+    "setup-seraphon-poursuivre",
+  );
+  if (setupSeraphonBlock) {
+    setupSeraphonBlock.hidden = !isSeraphonFactionId(factionId);
+  }
+  if (isSeraphonFactionId(factionId) && setupSeraphonList) {
+    if (
+      !SERAPHON_ASTERISMS.some((a) => a.id === state.setup.seraphonAsterismId)
+    ) {
+      state.setup.seraphonAsterismId = SERAPHON_ASTERISMS[0]?.id || "";
+    }
+    setupSeraphonList.innerHTML = "";
+    for (const a of SERAPHON_ASTERISMS) {
+      const lab = document.createElement("label");
+      lab.className = "radio-line";
+      const r = document.createElement("input");
+      r.type = "radio";
+      r.name = "seraphon-asterism";
+      r.value = a.id;
+      r.checked = state.setup.seraphonAsterismId === a.id;
+      r.addEventListener("change", () => {
+        state.setup.seraphonAsterismId = a.id;
+        persist();
+        const recap = document.getElementById("setup-army-recap-body");
+        if (recap) recap.innerHTML = buildSetupArmyRecapHtml();
+      });
+      lab.appendChild(r);
+      lab.appendChild(
+        document.createTextNode(
+          ` ${a.name} — ${a.summary.replace(/\s+/g, " ").slice(0, 88)}${a.summary.length > 88 ? "…" : ""}`,
+        ),
+      );
+      setupSeraphonList.appendChild(lab);
+    }
+  }
+  if (setupSeraphonPoursuivre) {
+    setupSeraphonPoursuivre.innerHTML = isSeraphonFactionId(factionId)
+      ? `<strong>Poursuivre le Grand Plan (3e manche, 1×/bataille)</strong> — ${escapeHtml(SERAPHON_POURSUIVRE_INTRO)}<br/>` +
+        SERAPHON_ASTERISMS.map(
+          (a) =>
+            `<br/><strong>${escapeHtml(a.name)}</strong> : ${escapeHtml(a.pursueCondition || "")}`,
+        ).join("")
+      : "";
   }
   if (setupRecapTitle && fmeta) {
     setupRecapTitle.textContent = `Résumé — formations, traits, artefacts (${fmeta.name})`;
@@ -2724,6 +3211,7 @@ function initBattleFromSetup() {
     remoteFactionEffectsByClient: {},
     remoteUnitEffectsByClient: {},
     myOutgoingUnitEffects: [],
+    seraphon: { itzlPursue: false, coatlUsed: false },
   };
   persist();
   showBattle();
@@ -2980,6 +3468,43 @@ function buildLinkedEnemyOutgoingHtml(ph, b) {
     }
   }
 
+  if (ph.id === "hero" && isSeraphonFactionContext()) {
+    const serSpells = SERAPHON_SPELLS.filter(
+      (s) => s.phases?.includes("hero") && s.requiresEnemyTarget,
+    );
+    if (serSpells.length) {
+      if (!opp.length) {
+        blocks.push(
+          `<section class="panel-inner phase-spell-cast"><h3 class="subh">Sorts Seraphon (cible ennemie)</h3><p class="muted small">Connecte le salon ou utilise « Exemple local » dans le rail <strong>Ennemi</strong> pour afficher des unités à cibler.</p></section>`,
+        );
+      } else {
+        let h = `<section class="panel-inner phase-spell-cast"><h3 class="subh">Sorts Seraphon — cible ennemie</h3>`;
+        h += `<p class="muted small">Après un jet réussi, enregistre la cible : l’adversaire voit le rappel sur sa fiche (synchronisé). Effet valable la <strong>manche en cours</strong> ; retirable sous « Effets enregistrés actifs » en cas d’erreur.</p>`;
+        h += `<ul class="phase-spell-list">`;
+        for (const sp of serSpells) {
+          h += `<li class="phase-spell-list-item">`;
+          h += `<strong>${escapeHtml(sp.name)}</strong> <span class="muted">(incant. ${escapeHtml(sp.cast)})</span>`;
+          h += `<div class="muted small">${escapeHtml(sp.summary)}</div>`;
+          h += `<div class="phase-spell-controls">`;
+          h += `<label class="field phase-spell-field"><span>Unité ennemie</span>`;
+          h += `<select class="outgoing-enemy-select" data-outgoing-effect-id="${escapeHtml(sp.id)}">`;
+          h += `<option value="">— Choisir —</option>`;
+          for (const row of opp) {
+            if (row.destroyed) continue;
+            const u = getUnitById(row.catalogId);
+            const lab = escapeHtml(row.name || u?.name || row.catalogId);
+            h += `<option value="${escapeHtml(row.id)}">${lab} (${row.woundsCurrent}/${row.woundsMax} PV)</option>`;
+          }
+          h += `</select></label>`;
+          h += `<button type="button" class="btn small" data-outgoing-apply="${escapeHtml(sp.id)}">Appliquer sur la cible</button>`;
+          h += `</div></li>`;
+        }
+        h += `</ul></section>`;
+        blocks.push(h);
+      }
+    }
+  }
+
   if (ph.id === "hero") {
     const hasBel = state.instances.some(
       (i) =>
@@ -3124,6 +3649,32 @@ function buildPhaseArmyPowersHtml(ph, b) {
     }
   }
 
+  if (isSeraphonFactionContext()) {
+    for (const bt of SERAPHON_BATTLE_TRAITS) {
+      if (!bt.phases?.includes(ph.id)) continue;
+      if (showPowerFullForPhase(bt, ph, b)) {
+        parts.push(
+          `<li><strong>Trait d’armée — ${escapeHtml(bt.name)}</strong> : ${escapeHtml(bt.summary)}</li>`,
+        );
+      } else {
+        parts.push(
+          `<li class="muted"><strong>Trait d’armée — ${escapeHtml(bt.name)}</strong> — ${escapeHtml(bt.summary)}</li>`,
+        );
+      }
+    }
+    if (ph.id === "hero" && isPlayerTurn(b)) {
+      for (const sp of SERAPHON_SPELLS) {
+        if (!sp.phases?.includes(ph.id)) continue;
+        const lore = sp.lore
+          ? ` <span class="muted">(${escapeHtml(sp.lore)})</span>`
+          : "";
+        parts.push(
+          `<li><strong>Sort — ${escapeHtml(sp.name)}</strong>${lore} (incant. ${escapeHtml(sp.cast)}) : ${escapeHtml(sp.summary)}</li>`,
+        );
+      }
+    }
+  }
+
   const form = getFormationById(state.setup.formationId);
   const traitsFaction = getHeroicTraitsForFaction(fid);
   const artsFaction = getArtifactsForFaction(fid);
@@ -3182,7 +3733,9 @@ function buildPhaseArmyPowersHtml(ph, b) {
 
   if (!parts.length) return "";
   const blockTitle =
-    isPeauxVertesFactionContext() || isSoulblightFactionContext()
+    isPeauxVertesFactionContext() ||
+    isSoulblightFactionContext() ||
+    isSeraphonFactionContext()
       ? "Traits d’armée, formation, trait, artefact (cette phase)"
       : "Formation, trait, artefact (cette phase)";
   return `<h4 class="subh phase-sub">${escapeHtml(blockTitle)}</h4><ul class="phase-reasons phase-army-powers">${parts.join("")}</ul>`;
@@ -3196,7 +3749,9 @@ function buildMeleeProximityRecapHtml() {
         ? MELEE_PROXIMITY_RECAP_IRONJAWZ
         : isSoulblightFactionContext()
           ? MELEE_PROXIMITY_RECAP_SOULBLIGHT
-          : null;
+          : isSeraphonFactionContext()
+            ? MELEE_PROXIMITY_RECAP_SERAPHON
+            : null;
   if (!rows?.length) return "";
   let h = `<details class="melee-proximity-recap">`;
   h += `<summary class="melee-proximity-recap-summary">Bonus de proximité (mêlée) — récapitulatif</summary>`;
@@ -3469,6 +4024,7 @@ function buildPhaseUnitsPanelHtml(ph, b) {
 
 function mutedPowerReason(item, ph, b) {
   if (!item?.phases?.includes(ph.id)) return "";
+  if (ph.id === "hero" && item.bothHeroPhases) return "";
   if (item.playerTurnOnly && !isPlayerTurn(b))
     return "Ce pouvoir ne s’applique que pendant ton tour.";
   if (ph.id === "hero" && item.heroPhase === "mine" && !isPlayerTurn(b))
@@ -3806,7 +4362,9 @@ function tryApplyOutgoingEnemyEffect(effectId) {
       effectId: "sb_antique_malediction",
     };
   } else {
-    const sp = SOULBLIGHT_SPELLS.find((s) => s.id === effectId);
+    const sp =
+      SOULBLIGHT_SPELLS.find((s) => s.id === effectId) ||
+      SERAPHON_SPELLS.find((s) => s.id === effectId);
     if (!sp?.requiresEnemyTarget) return;
     if (ph.id !== "hero") {
       alert("En phase des héros uniquement.");
@@ -3814,12 +4372,14 @@ function tryApplyOutgoingEnemyEffect(effectId) {
     }
     const dmgMelee =
       sp.debuffMeleeDamage != null ? Number(sp.debuffMeleeDamage) : 0;
+    const rendDebuff =
+      sp.debuffRend != null ? Number(sp.debuffRend) : 0;
     payload = {
       label: `${sp.name} — cible enregistrée`,
       hit: 0,
       wound: 0,
       save: 0,
-      rend: 0,
+      rend: Number.isFinite(rendDebuff) ? rendDebuff : 0,
       damageMelee: Number.isFinite(dmgMelee) ? dmgMelee : 0,
       spellId: effectId,
       effectId: effectId,
@@ -3964,6 +4524,7 @@ function renderBattle() {
 
     html += buildIronjawzBattleEncartsHtml(ph, b);
     html += buildSoulblightBattleEncartsHtml(ph, b);
+    html += buildSeraphonBattleEncartsHtml(ph, b);
     html += `<div class="phase-drawer-stack">`;
     html += wrapPhaseDrawer(
       "Récap unités & rappels de phase",
@@ -4544,6 +5105,11 @@ function renderDetailPanel(instanceId) {
     h += `<p class="muted small">Griffes de Shordemaire (selon PV saisis) : <strong>${st}</strong> attaques — stigmates : 5 A si 10+ dégâts alloués (≤8 PV restants sur 18).</p>`;
   }
 
+  if (u.id === "ser_oldblood_carnosaure" && b) {
+    const st = getCarnosaurMassiveJawAttacks(inst, u);
+    h += `<p class="muted small">Mâchoires massives du Carnosaure (selon PV saisis) : <strong>${st}</strong> attaques — stigmates : 2 A si 10+ dégâts alloués (≤4 PV restants sur 14).</p>`;
+  }
+
   if (u.stigmates?.length) {
     h += `<h4>Stigmates</h4><ul class="abil-list">`;
     for (const s of u.stigmates) {
@@ -4939,6 +5505,28 @@ el.viewBattle?.addEventListener("change", (e) => {
   if (t.classList.contains("combat-show-all")) {
     combatTrackerShowAll = t.checked;
     renderBattle();
+    return;
+  }
+  if (
+    t.classList.contains("seraphon-itzl-pursue") ||
+    t.classList.contains("seraphon-coatl-spent")
+  ) {
+    const b = state.battle;
+    if (b) {
+      b.seraphon = b.seraphon || {
+        itzlPursue: false,
+        coatlUsed: false,
+      };
+      if (t.classList.contains("seraphon-itzl-pursue")) {
+        b.seraphon.itzlPursue = t.checked;
+      }
+      if (t.classList.contains("seraphon-coatl-spent")) {
+        b.seraphon.coatlUsed = t.checked;
+      }
+      persist();
+      partyKit.schedulePartySnapshotPush();
+      renderBattle();
+    }
     return;
   }
   if (t.classList.contains("tracker-pv")) {

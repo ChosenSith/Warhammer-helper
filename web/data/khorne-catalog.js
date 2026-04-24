@@ -18,6 +18,16 @@ import {
   SOULBLIGHT_SPELLS,
   SOULBLIGHT_UNITS,
 } from "./soulblight-catalog.js";
+import {
+  SERAPHON_ARTIFACTS,
+  SERAPHON_ASTERISMS,
+  SERAPHON_BATTLE_TRAITS,
+  SERAPHON_FORMATIONS,
+  SERAPHON_HEROIC_TRAITS,
+  SERAPHON_PRAYERS,
+  SERAPHON_SPELLS,
+  SERAPHON_UNITS,
+} from "./seraphon-catalog.js";
 
 export const FORMATIONS = [
   {
@@ -990,7 +1000,12 @@ export const UNITS = [
   },
 ];
 
-const ALL_CATALOG_UNITS = [...UNITS, ...IRONJAWZ_UNITS, ...SOULBLIGHT_UNITS];
+const ALL_CATALOG_UNITS = [
+  ...UNITS,
+  ...IRONJAWZ_UNITS,
+  ...SOULBLIGHT_UNITS,
+  ...SERAPHON_UNITS,
+];
 
 /** Prière (id) → warscroll d’invocation — uniquement si la convocation réussit en phase des héros. */
 export const CONVOCATION_PRAYER_TO_UNIT = {
@@ -1022,6 +1037,13 @@ export const FACTIONS = [
       "Formation, trait, artefact d’armée, dîme de sang, Trempés de sang — catalogue ci-dessous.",
     implemented: true,
   },
+  {
+    id: "seraphon",
+    name: "Seraphon",
+    description:
+      "Asterismes, formations d’Hôte (Étoile / ombre), traits héroïques, trésors des Anciens, littératures céleste & jungle, unités Coalescés / Starborne — rappels par phase.",
+    implemented: true,
+  },
 ];
 
 export function isKhorneFactionId(factionId) {
@@ -1036,11 +1058,16 @@ export function isSoulblightFactionId(factionId) {
   return factionId === "vampires";
 }
 
+export function isSeraphonFactionId(factionId) {
+  return factionId === "seraphon";
+}
+
 export function isPlayableFactionId(factionId) {
   return (
     isKhorneFactionId(factionId) ||
     isPeauxVertesFactionId(factionId) ||
-    isSoulblightFactionId(factionId)
+    isSoulblightFactionId(factionId) ||
+    isSeraphonFactionId(factionId)
   );
 }
 
@@ -1048,6 +1075,7 @@ export function getFormationsForFaction(factionId) {
   if (isKhorneFactionId(factionId)) return FORMATIONS;
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_FORMATIONS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_FORMATIONS;
+  if (isSeraphonFactionId(factionId)) return SERAPHON_FORMATIONS;
   return [];
 }
 
@@ -1055,6 +1083,7 @@ export function getHeroicTraitsForFaction(factionId) {
   if (isKhorneFactionId(factionId)) return HEROIC_TRAITS;
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_HEROIC_TRAITS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_HEROIC_TRAITS;
+  if (isSeraphonFactionId(factionId)) return SERAPHON_HEROIC_TRAITS;
   return [];
 }
 
@@ -1062,6 +1091,7 @@ export function getArtifactsForFaction(factionId) {
   if (isKhorneFactionId(factionId)) return ARTIFACTS;
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_ARTIFACTS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_ARTIFACTS;
+  if (isSeraphonFactionId(factionId)) return SERAPHON_ARTIFACTS;
   return [];
 }
 
@@ -1069,6 +1099,7 @@ export function getPrayersForFaction(factionId) {
   if (isKhorneFactionId(factionId)) return PRAYERS;
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_PRAYERS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_PRAYERS;
+  if (isSeraphonFactionId(factionId)) return SERAPHON_PRAYERS;
   return [];
 }
 
@@ -1077,11 +1108,15 @@ export function getDefaultArmySetupForFaction(factionId) {
   const formations = getFormationsForFaction(factionId);
   const traits = getHeroicTraitsForFaction(factionId);
   const arts = getArtifactsForFaction(factionId);
-  return {
+  const o = {
     formationId: formations[0]?.id ?? "",
     traitId: traits[0]?.id ?? "",
     artifactId: arts[0]?.id ?? "",
   };
+  if (isSeraphonFactionId(factionId)) {
+    o.seraphonAsterismId = SERAPHON_ASTERISMS[0]?.id ?? "";
+  }
+  return o;
 }
 
 /** Unités disponibles pour la faction (hors invocations : filtrées dans l’app). */
@@ -1089,6 +1124,7 @@ export function getUnitsForFaction(factionId) {
   if (isKhorneFactionId(factionId)) return UNITS;
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_UNITS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_UNITS;
+  if (isSeraphonFactionId(factionId)) return SERAPHON_UNITS;
   return [];
 }
 
@@ -1101,6 +1137,7 @@ export function getFormationById(id) {
     FORMATIONS.find((f) => f.id === id) ||
     IRONJAWZ_FORMATIONS.find((f) => f.id === id) ||
     SOULBLIGHT_FORMATIONS.find((f) => f.id === id) ||
+    SERAPHON_FORMATIONS.find((f) => f.id === id) ||
     null
   );
 }
@@ -1113,6 +1150,18 @@ export {
   SOULBLIGHT_CONVOCATION_SPELLS,
   MELEE_PROXIMITY_RECAP_SOULBLIGHT,
 } from "./soulblight-catalog.js";
+export {
+  MELEE_PROXIMITY_RECAP_SERAPHON,
+  SERAPHON_ARTIFACTS,
+  SERAPHON_ASTERISMS,
+  SERAPHON_BATTLE_TRAITS,
+  SERAPHON_FORMATIONS,
+  SERAPHON_HEROIC_TRAITS,
+  SERAPHON_POURSUIVRE_INTRO,
+  SERAPHON_SPELLS,
+  getSeraphonAsterismById,
+  seraphonUnitIsMonsterSeraphon,
+} from "./seraphon-catalog.js";
 
 /** Rappels dîme de sang par phase (usage ou rappel de passifs débloqués). */
 export function getBloodTitheReasonsForPhase(phaseId) {

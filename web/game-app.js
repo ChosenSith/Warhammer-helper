@@ -2914,6 +2914,12 @@ function renderSetup() {
   const khorne = isKhorneFactionId(factionId);
   const playable = isPlayableFactionId(factionId);
   const fmeta = FACTIONS.find((f) => f.id === factionId);
+  if (el.viewSetup) {
+    el.viewSetup.classList.toggle(
+      "setup-faction-sylvaneth",
+      playable && isSylvanethFactionId(factionId),
+    );
+  }
 
   function syncSetupPostFactionVisibility() {
     const pf = document.getElementById("setup-post-faction");

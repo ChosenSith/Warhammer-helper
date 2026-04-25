@@ -653,6 +653,11 @@ input.one-line {
   gap: 1rem 1.25rem;
 }
 
+/* Sylvaneth : aucun choix de formation / traits de bataille (masquage dur du panneau) */
+#view-setup.setup-faction-sylvaneth #setup-khorne-powers {
+  display: none !important;
+}
+
 /* Sylvaneth : bloc “bonus de tes choix” sur toute la largeur, au-dessus des colonnes détail */
 .setup-recap-col--sylvaneth-main {
   grid-column: 1 / -1;

@@ -2554,8 +2554,14 @@ function renderSetup() {
     const pf = document.getElementById("setup-post-faction");
     if (!pf) return;
     const fid = String(state.setup?.factionId ?? "").trim();
-    const chosen = fid !== "" && FACTIONS.some((f) => f.id === fid);
-    pf.hidden = !chosen;
+    const chosen =
+      fid !== "" && FACTIONS.some((f) => f.id === fid && f.implemented);
+    if (chosen) {
+      pf.hidden = false;
+      pf.removeAttribute("hidden");
+    } else {
+      pf.hidden = true;
+    }
   }
 
   syncSetupPostFactionVisibility();
@@ -2828,7 +2834,11 @@ function renderSetup() {
       lab.appendChild(r);
       lab.appendChild(
         document.createTextNode(
-          ` ${a.name} — ${a.summary.replace(/\s+/g, " ").slice(0, 88)}${a.summary.length > 88 ? "…" : ""}`,
+          (() => {
+            const s = String(a.summary ?? "");
+            const one = s.replace(/\s+/g, " ");
+            return ` ${a.name} — ${one.slice(0, 88)}${s.length > 88 ? "…" : ""}`;
+          })(),
         ),
       );
       setupSeraphonList.appendChild(lab);
@@ -3087,7 +3097,15 @@ function renderSetup() {
 
   const recapBody = document.getElementById("setup-army-recap-body");
   if (recapBody) {
-    recapBody.innerHTML = playable ? buildSetupArmyRecapHtml() : "";
+    try {
+      recapBody.innerHTML = playable ? buildSetupArmyRecapHtml() : "";
+    } catch (recapErr) {
+      console.error("[renderSetup] résumé d’armée", recapErr);
+      recapBody.innerHTML =
+        playable ?
+          '<p class="muted small">Résumé d’armée : erreur d’affichage (détail en console F12).</p>'
+        : "";
+    }
   }
 
   refreshArmyPresetControls();
@@ -3095,6 +3113,8 @@ function renderSetup() {
     console.error("[renderSetup]", err);
   } finally {
     syncSetupPostFactionVisibility();
+    updatePartyKitConnectButton();
+    renderSalonRoster();
   }
 }
 

@@ -697,12 +697,6 @@ input.one-line {
   font-size: 0.85rem;
 }
 
-.setup-recap-sylvaneth-spells li strong,
-.setup-recap-col--sylvaneth-main .setup-recap-sylvaneth-choices li strong {
-  display: inline;
-  margin-right: 0.2rem;
-}
-
 .setup-recap-sub {
   margin: 0 0 0.5rem;
   font-size: 0.98rem;
@@ -720,12 +714,31 @@ input.one-line {
 
 .setup-recap-list li {
   margin-bottom: 0.75rem;
+  min-width: 0; /* évite un rétrécissement bizarre des colonnes en grille */
 }
 
-.setup-recap-list li strong {
+/* Uniquement le **titre** d’une entrée (premier nœud strong du <li>) — pas les mots en gras du résumé riche. */
+.setup-recap-list > li > strong:first-of-type {
   display: block;
   margin-bottom: 0.15rem;
   color: var(--text);
+}
+
+/* Résumé avec **mot** : le gras est inline (sinon chaque <strong> = une ligne) */
+.setup-recap-bonus strong,
+.setup-recap-bonus--detail strong,
+.setup-recap-line strong {
+  display: inline;
+  font-weight: 650;
+  margin: 0;
+}
+
+/* Titre de sort (et nom dans les lignes de choix) : rester en ligne, après la règle "block" ci-dessus */
+.setup-recap-sylvaneth-spells > li > strong:first-of-type,
+.setup-recap-sylvaneth-choices > li > strong:first-of-type {
+  display: inline;
+  margin-right: 0.25rem;
+  margin-bottom: 0;
 }
 
 .setup-recap-list .setup-recap-line {

@@ -50,6 +50,7 @@ import {
   SYLVANETH_GLADES,
   getSylvanethGladeById,
   getSylvanethSeasonById,
+  SYLVANETH_FORMATIONS,
 } from "./data/khorne-catalog.js";
 import { buildUniversalPcDrawerHtml } from "./data/universal-pc-rules.js";
 import {
@@ -908,7 +909,6 @@ function buildSylvanethBattleEncartsHtml(ph, b) {
   const sy = b.sylvaneth || (b.sylvaneth = {});
   const season = getSylvanethSeasonById(state.setup.sylvanethSeasonId);
   const glade = getSylvanethGladeById(state.setup.sylvanethGladeId);
-  const form = getFormationById(state.setup.formationId);
   const tr = getHeroicTraitsForFaction("sylvaneth").find(
     (t) => t.id === state.setup.traitId,
   );
@@ -944,7 +944,8 @@ function buildSylvanethBattleEncartsHtml(ph, b) {
     );
   }
 
-  if (form && showPowerFullForPhase(form, ph, b)) {
+  for (const form of SYLVANETH_FORMATIONS) {
+    if (!showPowerFullForPhase(form, ph, b)) continue;
     parts.push(
       `<div class="panel-inner sylvaneth-encart sylvaneth-encart--bt"><h4 class="subh">Trait de bataille — ${escapeHtml(form.name)}</h4>
         <p class="muted small"><strong>${escapeHtml(form.ability || "")}</strong> — ${escapeHtml(form.summary)}</p>
@@ -1560,7 +1561,6 @@ function buildSetupArmyRecapHtml() {
   if (isSylvanethFactionId(fid)) {
     const ss = getSylvanethSeasonById(state.setup.sylvanethSeasonId);
     const gg = getSylvanethGladeById(state.setup.sylvanethGladeId);
-    const formSel = getFormationById(state.setup.formationId);
     const trSel = traits.find((t) => t.id === state.setup.traitId);
     const arSel = artifacts.find((a) => a.id === state.setup.artifactId);
     h += '<div class="setup-recap-col setup-recap-col--sylvaneth setup-recap-col--sylvaneth-main"><h3 class="setup-recap-sub">Sylvaneth — bonus de tes choix</h3><ul class="setup-recap-list setup-recap-sylvaneth-choices">';
@@ -1568,12 +1568,15 @@ function buildSetupArmyRecapHtml() {
       <p class="setup-recap-bonus">${ss?.bonusSummary ? formatSetupRecapRich(ss.bonusSummary) : "—"}</p></li>`;
     h += `<li class="setup-recap-choice setup-recap-choice--glad"><span class="setup-recap-choice-label">Clairière (choisie)</span> — <strong>${gg ? escapeHtml(gg.name) : "—"}</strong>
       <p class="setup-recap-bonus">${gg?.bonusSummary ? formatSetupRecapRich(gg.bonusSummary) : "—"}</p></li>`;
-    h += `<li class="setup-recap-choice setup-recap-choice--bt"><span class="setup-recap-choice-label">Trait de bataille (sélection)</span> — <strong>${formSel ? escapeHtml(formSel.name) : "—"}</strong>
-      <p class="setup-recap-bonus">${formSel?.bonusSummary ? formatSetupRecapRich(formSel.bonusSummary) : ""}</p></li>`;
     h += `<li class="setup-recap-choice setup-recap-choice--tct"><span class="setup-recap-choice-label">Trait de commandement (sélection)</span> — <strong>${trSel ? escapeHtml(trSel.name) : "—"}</strong>
       <p class="setup-recap-bonus">${trSel?.bonusSummary ? formatSetupRecapRich(trSel.bonusSummary) : ""}</p></li>`;
     h += `<li class="setup-recap-choice setup-recap-choice--rel"><span class="setup-recap-choice-label">Relique d’arôme (sélection)</span> — <strong>${arSel ? escapeHtml(arSel.name) : "—"}</strong>
       <p class="setup-recap-bonus">${arSel?.bonusSummary ? formatSetupRecapRich(arSel.bonusSummary) : ""}</p></li>`;
+    h += `</ul><h4 class="setup-recap-sub setup-recap-sub--sylvaneth-bt">Traits de bataille (tous s’appliquent)</h4><ul class="setup-recap-list setup-recap-sylvaneth-battle-traits">`;
+    for (const sbf of SYLVANETH_FORMATIONS) {
+      h += `<li class="setup-recap-sylvaneth-bt"><strong>${escapeHtml(sbf.name)}</strong> <span class="muted small">— ${escapeHtml(sbf.ability || "")}</span>
+        <p class="setup-recap-bonus">${sbf.bonusSummary ? formatSetupRecapRich(sbf.bonusSummary) : escapeHtml(sbf.summary || "")}</p></li>`;
+    }
     h += `</ul><h4 class="setup-recap-sub setup-recap-sub--domaine">Domaine du grand-bois (sorts — effets type)</h4><ul class="setup-recap-list setup-recap-sylvaneth-spells">`;
     for (const sp of SYLVANETH_SPELLS) {
       h += `<li><strong>${escapeHtml(sp.name)}</strong> <span class="muted small">(inc. ${escapeHtml(sp.cast || "—")})</span>
@@ -1581,24 +1584,24 @@ function buildSetupArmyRecapHtml() {
     }
     h += `</ul><p class="muted small setup-recap-foot">Chenfront a été exclu. Coche <strong>9p bois</strong> en suivi pour les règles de proximité. Les valeurs en gras sont des synthèses : vérifie le battletome / MUSE en tournoi.</p></div>`;
   }
-  h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${
-    isSeraphonFactionId(fid) ?
-      "Formations (Hôtes d’étoile)"
-    : isSylvanethFactionId(fid) ?
-        "Traits de bataille (tous — détail bonus)"
-    : "Formations de bataille"
-  }</h3><ul class="setup-recap-list">`;
-  for (const f of formations) {
-    h += `<li><strong>${escapeHtml(f.name)}</strong><span class="muted small"> — ${escapeHtml(f.ability)}</span><p class="muted small setup-recap-line">${escapeHtml(f.summary)}</p>`;
-    if (f.bonusSummary) {
-      h += `<p class="setup-recap-bonus setup-recap-bonus--detail">${formatSetupRecapRich(f.bonusSummary)}</p>`;
+  if (!isSylvanethFactionId(fid)) {
+    h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${
+      isSeraphonFactionId(fid) ?
+        "Formations (Hôtes d’étoile)"
+      : "Formations de bataille"
+    }</h3><ul class="setup-recap-list">`;
+    for (const f of formations) {
+      h += `<li><strong>${escapeHtml(f.name)}</strong><span class="muted small"> — ${escapeHtml(f.ability)}</span><p class="muted small setup-recap-line">${escapeHtml(f.summary)}</p>`;
+      if (f.bonusSummary) {
+        h += `<p class="setup-recap-bonus setup-recap-bonus--detail">${formatSetupRecapRich(f.bonusSummary)}</p>`;
+      }
+      if (f.setupRecap) {
+        h += `<p class="muted small setup-recap-line setup-recap-rappel">${f.setupRecap}</p>`;
+      }
+      h += `</li>`;
     }
-    if (f.setupRecap) {
-      h += `<p class="muted small setup-recap-line setup-recap-rappel">${f.setupRecap}</p>`;
-    }
-    h += `</li>`;
+    h += "</ul></div>";
   }
-  h += "</ul></div>";
   h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${escapeHtml(traitTitle)}</h3><ul class="setup-recap-list">`;
   for (const t of traits) {
     h += `<li><strong>${escapeHtml(t.name)}</strong><p class="muted small setup-recap-line">${escapeHtml(t.summary)}</p>`;
@@ -3127,6 +3130,11 @@ function renderSetup() {
   document.querySelectorAll(".setup-army-powers").forEach((node) => {
     node.hidden = !playable;
   });
+  const setupFormationsPanel = document.getElementById("setup-khorne-powers");
+  if (setupFormationsPanel) {
+    setupFormationsPanel.hidden =
+      !playable || isSylvanethFactionId(factionId);
+  }
 
   const setupHeadingTrait = document.getElementById("setup-heading-trait");
   const setupHeadingArtifact = document.getElementById("setup-heading-artifact");
@@ -3163,7 +3171,7 @@ function renderSetup() {
   const setupFormationTitle = document.getElementById("setup-formation-title");
   if (setupFormationTitle) {
     setupFormationTitle.textContent = isSylvanethFactionId(factionId)
-      ? "Trait de bataille (Sylvaneth)"
+      ? "Formation de bataille"
       : isSeraphonFactionId(factionId)
         ? "Hôte d’étoile (formation de bataille)"
         : "Formation de bataille";
@@ -3286,7 +3294,9 @@ function renderSetup() {
       : "";
   }
   if (setupRecapTitle && fmeta) {
-    setupRecapTitle.textContent = `Résumé — formations, traits, artefacts (${fmeta.name})`;
+    setupRecapTitle.textContent = isSylvanethFactionId(factionId)
+      ? `Résumé — choix, traits de bataille, sorts (${fmeta.name})`
+      : `Résumé — formations, traits, artefacts (${fmeta.name})`;
   }
   if (setupRecapHint && fmeta) {
     setupRecapHint.innerHTML = `Synthèse des options d’armée pour <strong>${escapeHtml(fmeta.name)}</strong> (phases et conditions : voir règles et warscrolls).`;
@@ -4168,6 +4178,18 @@ function buildPhaseArmyPowersHtml(ph, b) {
         `<li><strong>Clairière</strong> — ${escapeHtml(glade.name)} : ${escapeHtml(glade.summary)}</li>`,
       );
     }
+    for (const bf of SYLVANETH_FORMATIONS) {
+      if (!bf.phases?.includes(ph.id)) continue;
+      if (showPowerFullForPhase(bf, ph, b)) {
+        parts.push(
+          `<li><strong>Trait de bataille — ${escapeHtml(bf.name)}</strong> · <strong>${escapeHtml(bf.ability || "")}</strong> : ${escapeHtml(bf.summary)}</li>`,
+        );
+      } else {
+        parts.push(
+          `<li class="muted"><strong>Trait de bataille — ${escapeHtml(bf.name)}</strong> · ${escapeHtml(bf.summary)}</li>`,
+        );
+      }
+    }
   }
 
   const form = getFormationById(state.setup.formationId);
@@ -4176,7 +4198,11 @@ function buildPhaseArmyPowersHtml(ph, b) {
   const trait = traitsFaction.find((t) => t.id === state.setup.traitId);
   const art = artsFaction.find((a) => a.id === state.setup.artifactId);
 
-  if (form && form.phases?.includes(ph.id)) {
+  if (
+    !isSylvanethFactionId(fid) &&
+    form &&
+    form.phases?.includes(ph.id)
+  ) {
     if (showPowerFullForPhase(form, ph, b)) {
       parts.push(
         `<li><strong>Formation de bataille — ${escapeHtml(form.name)}</strong> · <strong>${escapeHtml(form.ability)}</strong> : ${escapeHtml(form.summary)}</li>`,
@@ -4999,7 +5025,11 @@ function renderBattle() {
   let html = "";
 
   if (ph.id === "deployment") {
-    html += `<p class="phase-intro">Déploiement — <strong>${escapeHtml(form?.name || "—")}</strong> : ${escapeHtml(form?.ability || "—")}</p>`;
+    const deployIntro =
+      isSylvanethFactionContext() ?
+        `Déploiement — <strong>Sylvaneth</strong> : tous les traits de bataille s’appliquent ; rappelle la saison, la clairière choisie et la case <strong>9p bois</strong> pour la forêt-sympathie.`
+      : `Déploiement — <strong>${escapeHtml(form?.name || "—")}</strong> : ${escapeHtml(form?.ability || "—")}`;
+    html += `<p class="phase-intro">${deployIntro}</p>`;
     html += buildPhaseUnitsPanelHtml(ph, b);
     html += wrapPhaseTrackerCollapsible(buildPhaseTrackerHtml(ph, b));
     html += `<p><button type="button" class="btn" id="btn-deploy-done">Déploiement terminé — commencer tour 1</button></p>`;

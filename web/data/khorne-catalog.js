@@ -1099,7 +1099,7 @@ export function getFormationsForFaction(factionId) {
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_FORMATIONS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_FORMATIONS;
   if (isSeraphonFactionId(factionId)) return SERAPHON_FORMATIONS;
-  if (isSylvanethFactionId(factionId)) return SYLVANETH_FORMATIONS;
+  if (isSylvanethFactionId(factionId)) return [];
   return [];
 }
 
@@ -1201,6 +1201,7 @@ export {
   SYLVANETH_UNITS,
   SYLVANETH_SPELLS,
   SYLVANETH_SEASONS,
+  SYLVANETH_FORMATIONS,
   SYLVANETH_GLADES,
   getSylvanethGladeById,
   getSylvanethSeasonById,

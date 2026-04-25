@@ -7,7 +7,7 @@
  * `bonusSummary` = effets de jeu (résumé pour l’écran de préparation).
  * Vérifie les valeurs sur ton battletome / MUSE si tu joues en tournoi.
  */
-/** Traits de bataille (sélection « formation de bataille » dans l’app). */
+/** Traits de bataille (tous appliqués en jeu — plus de choix dans l’app). */
 export const SYLVANETH_FORMATIONS = [
   {
     id: "syl_form_clairiere",

@@ -1516,6 +1516,18 @@ function applyArmyPreset(preset) {
   persist();
 }
 
+/** `bonusSummary` catalogue : `**a**` → gras (hors listes dangereuses). */
+function formatSetupRecapRich(text) {
+  if (text == null || String(text) === "") return "";
+  const parts = String(text).split(/\*\*/);
+  let out = "";
+  for (let i = 0; i < parts.length; i += 1) {
+    out +=
+      i % 2 ? `<strong>${escapeHtml(parts[i])}</strong>` : escapeHtml(parts[i]);
+  }
+  return out;
+}
+
 function buildSetupArmyRecapHtml() {
   const fid = state.setup.factionId;
   const formations = getFormationsForFaction(fid);
@@ -1526,13 +1538,17 @@ function buildSetupArmyRecapHtml() {
       "Traits héroïques (Massacreur de peuples)"
     : isSeraphonFactionId(fid) ?
         "Traits héroïques (disciplines célestes, Héros)"
-      : "Traits héroïques";
+      : isSylvanethFactionId(fid) ?
+        "Traits de commandement (Sylvaneth)"
+        : "Traits héroïques";
   const artTitle =
     isKhorneFactionId(fid) ? "Artefacts (Meurtriers)" : isSeraphonFactionId(
         fid,
       ) ?
         "Trésors des Anciens (Héros)"
-      : "Artefacts de pouvoir";
+      : isSylvanethFactionId(fid) ?
+        "Reliques d’arôme (Sylvaneth)"
+        : "Artefacts de pouvoir";
   let h = '<div class="setup-recap-columns">';
   if (isSeraphonFactionId(fid)) {
     h += '<div class="setup-recap-col setup-recap-col--seraphon-grand-plan"><h3 class="setup-recap-sub">Grand Plan — Asterisme</h3><ul class="setup-recap-list">';
@@ -1544,18 +1560,39 @@ function buildSetupArmyRecapHtml() {
   if (isSylvanethFactionId(fid)) {
     const ss = getSylvanethSeasonById(state.setup.sylvanethSeasonId);
     const gg = getSylvanethGladeById(state.setup.sylvanethGladeId);
-    h += '<div class="setup-recap-col setup-recap-col--sylvaneth"><h3 class="setup-recap-sub">Sylvaneth — saison &amp; clairière</h3><ul class="setup-recap-list">';
-    h += `<li><strong>Saison</strong> — ${ss ? escapeHtml(ss.name) : "—"}<p class="muted small setup-recap-line">${ss ? escapeHtml(ss.setupRecap || ss.summary) : ""}</p></li>`;
-    h += `<li><strong>Clairière</strong> — ${gg ? escapeHtml(gg.name) : "—"}<p class="muted small setup-recap-line">${gg ? escapeHtml(gg.setupRecap || gg.summary) : ""}</p></li>`;
-    h += `</ul><p class="muted small">Chenfront a été retiré de la liste. Le suivi d’unité propose une coche <strong>9p d’un bois</strong> pour les bonus de position.</p></div>`;
+    const formSel = getFormationById(state.setup.formationId);
+    const trSel = traits.find((t) => t.id === state.setup.traitId);
+    const arSel = artifacts.find((a) => a.id === state.setup.artifactId);
+    h += '<div class="setup-recap-col setup-recap-col--sylvaneth setup-recap-col--sylvaneth-main"><h3 class="setup-recap-sub">Sylvaneth — bonus de tes choix</h3><ul class="setup-recap-list setup-recap-sylvaneth-choices">';
+    h += `<li class="setup-recap-choice setup-recap-choice--season"><span class="setup-recap-choice-label">Saison (choisie)</span> — <strong>${ss ? escapeHtml(ss.name) : "—"}</strong>
+      <p class="setup-recap-bonus">${ss?.bonusSummary ? formatSetupRecapRich(ss.bonusSummary) : "—"}</p></li>`;
+    h += `<li class="setup-recap-choice setup-recap-choice--glad"><span class="setup-recap-choice-label">Clairière (choisie)</span> — <strong>${gg ? escapeHtml(gg.name) : "—"}</strong>
+      <p class="setup-recap-bonus">${gg?.bonusSummary ? formatSetupRecapRich(gg.bonusSummary) : "—"}</p></li>`;
+    h += `<li class="setup-recap-choice setup-recap-choice--bt"><span class="setup-recap-choice-label">Trait de bataille (sélection)</span> — <strong>${formSel ? escapeHtml(formSel.name) : "—"}</strong>
+      <p class="setup-recap-bonus">${formSel?.bonusSummary ? formatSetupRecapRich(formSel.bonusSummary) : ""}</p></li>`;
+    h += `<li class="setup-recap-choice setup-recap-choice--tct"><span class="setup-recap-choice-label">Trait de commandement (sélection)</span> — <strong>${trSel ? escapeHtml(trSel.name) : "—"}</strong>
+      <p class="setup-recap-bonus">${trSel?.bonusSummary ? formatSetupRecapRich(trSel.bonusSummary) : ""}</p></li>`;
+    h += `<li class="setup-recap-choice setup-recap-choice--rel"><span class="setup-recap-choice-label">Relique d’arôme (sélection)</span> — <strong>${arSel ? escapeHtml(arSel.name) : "—"}</strong>
+      <p class="setup-recap-bonus">${arSel?.bonusSummary ? formatSetupRecapRich(arSel.bonusSummary) : ""}</p></li>`;
+    h += `</ul><h4 class="setup-recap-sub setup-recap-sub--domaine">Domaine du grand-bois (sorts — effets type)</h4><ul class="setup-recap-list setup-recap-sylvaneth-spells">`;
+    for (const sp of SYLVANETH_SPELLS) {
+      h += `<li><strong>${escapeHtml(sp.name)}</strong> <span class="muted small">(inc. ${escapeHtml(sp.cast || "—")})</span>
+        <p class="setup-recap-bonus">${sp.bonusSummary ? formatSetupRecapRich(sp.bonusSummary) : escapeHtml(sp.summary)}</p></li>`;
+    }
+    h += `</ul><p class="muted small setup-recap-foot">Chenfront a été exclu. Coche <strong>9p bois</strong> en suivi pour les règles de proximité. Les valeurs en gras sont des synthèses : vérifie le battletome / MUSE en tournoi.</p></div>`;
   }
   h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${
     isSeraphonFactionId(fid) ?
       "Formations (Hôtes d’étoile)"
+    : isSylvanethFactionId(fid) ?
+        "Traits de bataille (tous — détail bonus)"
     : "Formations de bataille"
   }</h3><ul class="setup-recap-list">`;
   for (const f of formations) {
     h += `<li><strong>${escapeHtml(f.name)}</strong><span class="muted small"> — ${escapeHtml(f.ability)}</span><p class="muted small setup-recap-line">${escapeHtml(f.summary)}</p>`;
+    if (f.bonusSummary) {
+      h += `<p class="setup-recap-bonus setup-recap-bonus--detail">${formatSetupRecapRich(f.bonusSummary)}</p>`;
+    }
     if (f.setupRecap) {
       h += `<p class="muted small setup-recap-line setup-recap-rappel">${f.setupRecap}</p>`;
     }
@@ -1565,6 +1602,9 @@ function buildSetupArmyRecapHtml() {
   h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${escapeHtml(traitTitle)}</h3><ul class="setup-recap-list">`;
   for (const t of traits) {
     h += `<li><strong>${escapeHtml(t.name)}</strong><p class="muted small setup-recap-line">${escapeHtml(t.summary)}</p>`;
+    if (t.bonusSummary) {
+      h += `<p class="setup-recap-bonus setup-recap-bonus--detail">${formatSetupRecapRich(t.bonusSummary)}</p>`;
+    }
     if (t.setupRecap) {
       h += `<p class="muted small setup-recap-line setup-recap-rappel">${t.setupRecap}</p>`;
     }
@@ -1574,6 +1614,9 @@ function buildSetupArmyRecapHtml() {
   h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${escapeHtml(artTitle)}</h3><ul class="setup-recap-list">`;
   for (const a of artifacts) {
     h += `<li><strong>${escapeHtml(a.name)}</strong><p class="muted small setup-recap-line">${escapeHtml(a.summary)}</p>`;
+    if (a.bonusSummary) {
+      h += `<p class="setup-recap-bonus setup-recap-bonus--detail">${formatSetupRecapRich(a.bonusSummary)}</p>`;
+    }
     if (a.setupRecap) {
       h += `<p class="muted small setup-recap-line setup-recap-rappel">${a.setupRecap}</p>`;
     }

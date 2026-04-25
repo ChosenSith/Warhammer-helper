@@ -28,6 +28,16 @@ import {
   SERAPHON_SPELLS,
   SERAPHON_UNITS,
 } from "./seraphon-catalog.js";
+import {
+  SYLVANETH_ARTIFACTS,
+  SYLVANETH_FORMATIONS,
+  SYLVANETH_GLADES,
+  SYLVANETH_HEROIC_TRAITS,
+  SYLVANETH_PRAYERS,
+  SYLVANETH_SEASONS,
+  SYLVANETH_SPELLS,
+  SYLVANETH_UNITS,
+} from "./sylvaneth-catalog.js";
 
 export const FORMATIONS = [
   {
@@ -1005,6 +1015,7 @@ const ALL_CATALOG_UNITS = [
   ...IRONJAWZ_UNITS,
   ...SOULBLIGHT_UNITS,
   ...SERAPHON_UNITS,
+  ...SYLVANETH_UNITS,
 ];
 
 /** Prière (id) → warscroll d’invocation — uniquement si la convocation réussit en phase des héros. */
@@ -1044,6 +1055,13 @@ export const FACTIONS = [
       "Asterismes, formations d’Hôte (Étoile / ombre), traits héroïques, trésors des Anciens, littératures céleste & jungle, unités Coalescés / Starborne — rappels par phase.",
     implemented: true,
   },
+  {
+    id: "sylvaneth",
+    name: "Sylvaneth",
+    description:
+      "Fille-feuille, Saisons, clairières, règles d’Héros et de sorts (Domaine du grand-bois) — rappels par phase ; unités en catalogue.",
+    implemented: true,
+  },
 ];
 
 export function isKhorneFactionId(factionId) {
@@ -1062,12 +1080,17 @@ export function isSeraphonFactionId(factionId) {
   return factionId === "seraphon";
 }
 
+export function isSylvanethFactionId(factionId) {
+  return factionId === "sylvaneth";
+}
+
 export function isPlayableFactionId(factionId) {
   return (
     isKhorneFactionId(factionId) ||
     isPeauxVertesFactionId(factionId) ||
     isSoulblightFactionId(factionId) ||
-    isSeraphonFactionId(factionId)
+    isSeraphonFactionId(factionId) ||
+    isSylvanethFactionId(factionId)
   );
 }
 
@@ -1076,6 +1099,7 @@ export function getFormationsForFaction(factionId) {
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_FORMATIONS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_FORMATIONS;
   if (isSeraphonFactionId(factionId)) return SERAPHON_FORMATIONS;
+  if (isSylvanethFactionId(factionId)) return SYLVANETH_FORMATIONS;
   return [];
 }
 
@@ -1084,6 +1108,7 @@ export function getHeroicTraitsForFaction(factionId) {
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_HEROIC_TRAITS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_HEROIC_TRAITS;
   if (isSeraphonFactionId(factionId)) return SERAPHON_HEROIC_TRAITS;
+  if (isSylvanethFactionId(factionId)) return SYLVANETH_HEROIC_TRAITS;
   return [];
 }
 
@@ -1092,6 +1117,7 @@ export function getArtifactsForFaction(factionId) {
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_ARTIFACTS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_ARTIFACTS;
   if (isSeraphonFactionId(factionId)) return SERAPHON_ARTIFACTS;
+  if (isSylvanethFactionId(factionId)) return SYLVANETH_ARTIFACTS;
   return [];
 }
 
@@ -1100,6 +1126,7 @@ export function getPrayersForFaction(factionId) {
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_PRAYERS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_PRAYERS;
   if (isSeraphonFactionId(factionId)) return SERAPHON_PRAYERS;
+  if (isSylvanethFactionId(factionId)) return SYLVANETH_PRAYERS;
   return [];
 }
 
@@ -1116,6 +1143,10 @@ export function getDefaultArmySetupForFaction(factionId) {
   if (isSeraphonFactionId(factionId)) {
     o.seraphonAsterismId = SERAPHON_ASTERISMS[0]?.id ?? "";
   }
+  if (isSylvanethFactionId(factionId)) {
+    o.sylvanethSeasonId = SYLVANETH_SEASONS[0]?.id ?? "";
+    o.sylvanethGladeId = SYLVANETH_GLADES[0]?.id ?? "";
+  }
   return o;
 }
 
@@ -1125,6 +1156,7 @@ export function getUnitsForFaction(factionId) {
   if (isPeauxVertesFactionId(factionId)) return IRONJAWZ_UNITS;
   if (isSoulblightFactionId(factionId)) return SOULBLIGHT_UNITS;
   if (isSeraphonFactionId(factionId)) return SERAPHON_UNITS;
+  if (isSylvanethFactionId(factionId)) return SYLVANETH_UNITS;
   return [];
 }
 
@@ -1138,6 +1170,7 @@ export function getFormationById(id) {
     IRONJAWZ_FORMATIONS.find((f) => f.id === id) ||
     SOULBLIGHT_FORMATIONS.find((f) => f.id === id) ||
     SERAPHON_FORMATIONS.find((f) => f.id === id) ||
+    SYLVANETH_FORMATIONS.find((f) => f.id === id) ||
     null
   );
 }
@@ -1163,6 +1196,16 @@ export {
   getSeraphonAsterismById,
   seraphonUnitIsMonsterSeraphon,
 } from "./seraphon-catalog.js";
+/* Traits de bataille Sylvaneth = SYLVANETH_FORMATIONS (pas le tableau SYLVANETH_BATTLE_TRAITS vide). */
+export {
+  SYLVANETH_UNITS,
+  SYLVANETH_SPELLS,
+  SYLVANETH_SEASONS,
+  SYLVANETH_GLADES,
+  getSylvanethGladeById,
+  getSylvanethSeasonById,
+  MELEE_PROXIMITY_RECAP_SYLVANETH,
+} from "./sylvaneth-catalog.js";
 
 /** Rappels dîme de sang par phase (usage ou rappel de passifs débloqués). */
 export function getBloodTitheReasonsForPhase(phaseId) {
@@ -1268,6 +1311,8 @@ export function getUnitPhaseReasons(unitDef, phaseId, opts = {}) {
         /* rappel aussi au tour adverse (charge adverse) */
       } else if (phaseId === "combat" && ab.combatPhaseBothSides) {
         /* mêlée adverse : passifs qui s’appliquent aussi */
+      } else if (phaseId === "shooting" && ab.shootingPhaseBothSides) {
+        /* tir tour adverse (ex. Guerrier noueux) */
       } else {
         continue;
       }

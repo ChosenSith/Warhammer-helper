@@ -68,7 +68,7 @@
 
     <section class="panel setup-faction-panel">
       <h2>Faction</h2>
-      <p class="hint small">Choisis ton armée : <strong>Seigneurs Ruinemânes</strong> (Soulblight), <strong>Peaux-Vertes</strong> (Mâchefers), <strong>Lames de Khorne</strong> ou <strong>Seraphon</strong> — chaque faction a son catalogue, ses formations et ses rappels en partie. La liste complète (dont Seraphon) se recharge aussi dès que le script du catalogue a fini de se charger.</p>
+      <p class="hint small">Choisis ton armée : <strong>Seigneurs Ruinemânes</strong> (Soulblight), <strong>Peaux-Vertes</strong> (Mâchefers), <strong>Lames de Khorne</strong>, <strong>Seraphon</strong> ou <strong>Sylvaneth</strong> — chaque faction a son catalogue, ses formations et ses rappels en partie. La liste complète se recharge aussi dès que le script du catalogue a fini de se charger.</p>
       <form class="setup-faction-form" autocomplete="off" onsubmit="return false;">
         <!-- Rempli aussi par game-app.js ; présent dans le HTML pour l’affichage si le module JS échoue (file://, etc.). -->
         <div id="setup-factions" class="radio-list">
@@ -87,6 +87,10 @@
           <label class="radio-line">
             <input type="radio" name="faction" value="seraphon" />
             Seraphon
+          </label>
+          <label class="radio-line">
+            <input type="radio" name="faction" value="sylvaneth" />
+            Sylvaneth
           </label>
         </div>
       </form>
@@ -160,6 +164,15 @@
       <p id="setup-seraphon-asterism-lead" class="hint small">Choisis l’Asterisme du déploiement (Le Grand Plan). Les rappels en partie et la condition « Poursuivre le Grand Plan » (3e manche) dépendent de ce choix.</p>
       <div id="setup-seraphon-asterism-list" class="radio-list"></div>
       <div id="setup-seraphon-poursuivre" class="muted small setup-seraphon-poursuivre"></div>
+    </section>
+
+    <section id="setup-sylvaneth-options" class="panel setup-army-powers" hidden>
+      <h2 id="setup-sylvaneth-title">Sylvaneth — Saison &amp; clairière</h2>
+      <p class="hint small">Saison du réveil (rappels tournants) et <strong>clairière d’Ostergeld</strong> (sans Chenfront). D’autres rappels dépendent du <em>Trait de bataille</em> et de la coche <strong>9p bois</strong> en suivi d’unité.</p>
+      <h3 class="subh" id="setup-sylvaneth-season-h">Saison</h3>
+      <div id="setup-sylvaneth-season-list" class="radio-list" aria-label="Saison sylvaneth"></div>
+      <h3 class="subh" id="setup-sylvaneth-glad-h">Clairière</h3>
+      <div id="setup-sylvaneth-glad-list" class="radio-list" aria-label="Clairière sylvaneth"></div>
     </section>
 
     <section id="setup-khorne-powers" class="panel setup-army-powers">

@@ -28,6 +28,7 @@ import {
   isPeauxVertesFactionId,
   isSoulblightFactionId,
   isSeraphonFactionId,
+  isSylvanethFactionId,
   isPlayableFactionId,
   IRONJAWZ_BATTLE_TRAITS,
   SOULBLIGHT_BATTLE_TRAITS,
@@ -42,7 +43,13 @@ import {
   SERAPHON_SPELLS,
   getSeraphonAsterismById,
   MELEE_PROXIMITY_RECAP_SERAPHON,
+  MELEE_PROXIMITY_RECAP_SYLVANETH,
   seraphonUnitIsMonsterSeraphon,
+  SYLVANETH_SPELLS,
+  SYLVANETH_SEASONS,
+  SYLVANETH_GLADES,
+  getSylvanethGladeById,
+  getSylvanethSeasonById,
 } from "./data/khorne-catalog.js";
 import { buildUniversalPcDrawerHtml } from "./data/universal-pc-rules.js";
 import {
@@ -103,6 +110,14 @@ function isPlayerTurn(b) {
 /** Rappel fort (plein texte) pour formation / trait / artefact selon phase et camp actif. */
 function showPowerFullForPhase(item, ph, b) {
   if (!item?.phases?.length || !item.phases.includes(ph.id)) return false;
+  if (ph.id === "combat" && item.combatBothSides) return true;
+  if (
+    (ph.id === "combat" || ph.id === "shooting") &&
+    item.combatAndShootingBothSides
+  ) {
+    return true;
+  }
+  if (item.enemyTurnOnly && isPlayerTurn(b)) return false;
   if (ph.id === "hero" && item.bothHeroPhases) return true;
   if (item.playerTurnOnly && !isPlayerTurn(b)) {
     if (ph.id === "end" && item.endPhaseBothSides) {
@@ -146,6 +161,10 @@ function isSoulblightFactionContext() {
 
 function isSeraphonFactionContext() {
   return isSeraphonFactionId(state.setup?.factionId);
+}
+
+function isSylvanethFactionContext() {
+  return isSylvanethFactionId(state.setup?.factionId);
 }
 
 function soulblightInstanceAliveByCatalogId(catalogId) {
@@ -221,6 +240,9 @@ function formatAttacksCellWithMeleeAtkBonus(w, inst, u, extraAtk) {
   if (w.dynamicAttacks === "carnosaur_machoires") {
     atkCell = String(getCarnosaurMassiveJawAttacks(inst, u));
   }
+  if (w.dynamicAttacks === "syl_durthu_epee") {
+    atkCell = String(getSylDurthuEpeeAttacks(inst, u));
+  }
   if (!extraAtk || inst.destroyed) return atkCell;
   if (w.dynamicAttacks === "belakor_lame") {
     const n = parseInt(atkCell, 10);
@@ -235,6 +257,10 @@ function formatAttacksCellWithMeleeAtkBonus(w, inst, u, extraAtk) {
     if (Number.isFinite(n)) return `${atkCell} → ${n + extraAtk}`;
   }
   if (w.dynamicAttacks === "carnosaur_machoires") {
+    const n = parseInt(atkCell, 10);
+    if (Number.isFinite(n)) return `${atkCell} → ${n + extraAtk}`;
+  }
+  if (w.dynamicAttacks === "syl_durthu_epee") {
     const n = parseInt(atkCell, 10);
     if (Number.isFinite(n)) return `${atkCell} → ${n + extraAtk}`;
   }
@@ -873,6 +899,188 @@ function buildSeraphonBattleEncartsHtml(ph, b) {
   return parts.join("");
 }
 
+/**
+ * Sylvaneth — rappels de saison, clairière, sorts persistants, reliques (1× bataille), unités.
+ */
+function buildSylvanethBattleEncartsHtml(ph, b) {
+  if (!isSylvanethFactionContext() || !b) return "";
+  const mine = isPlayerTurn(b);
+  const sy = b.sylvaneth || (b.sylvaneth = {});
+  const season = getSylvanethSeasonById(state.setup.sylvanethSeasonId);
+  const glade = getSylvanethGladeById(state.setup.sylvanethGladeId);
+  const form = getFormationById(state.setup.formationId);
+  const tr = getHeroicTraitsForFaction("sylvaneth").find(
+    (t) => t.id === state.setup.traitId,
+  );
+  const ar = getArtifactsForFaction("sylvaneth").find(
+    (a) => a.id === state.setup.artifactId,
+  );
+  const th = state.setup.traitHeroInstanceId
+    ? state.instances.find((i) => i.id === state.setup.traitHeroInstanceId)
+    : null;
+  const ah = state.setup.artifactHeroInstanceId
+    ? state.instances.find((i) => i.id === state.setup.artifactHeroInstanceId)
+    : null;
+  const parts = [];
+
+  if (ph.id === "deployment" && glade?.id === "syl_glad_bellemoisson") {
+    parts.push(
+      `<div class="panel-inner sylvaneth-encart sylvaneth-encart--glade"><h4 class="subh">Clairière — ${escapeHtml(glade.name)} (déploiement)</h4>
+        <p class="muted small">${escapeHtml(glade.summary)}</p></div>`,
+    );
+  }
+
+  if (season && showPowerFullForPhase(season, ph, b)) {
+    parts.push(
+      `<div class="panel-inner sylvaneth-encart sylvaneth-encart--season"><h4 class="subh">Saison — ${escapeHtml(season.name)}</h4>
+        <p class="muted small">${escapeHtml(season.summary)}</p></div>`,
+    );
+  }
+
+  if (glade && showPowerFullForPhase(glade, ph, b)) {
+    parts.push(
+      `<div class="panel-inner sylvaneth-encart sylvaneth-encart--glad"><h4 class="subh">Clairière — ${escapeHtml(glade.name)}</h4>
+        <p class="muted small">${escapeHtml(glade.summary)}</p></div>`,
+    );
+  }
+
+  if (form && showPowerFullForPhase(form, ph, b)) {
+    parts.push(
+      `<div class="panel-inner sylvaneth-encart sylvaneth-encart--bt"><h4 class="subh">Trait de bataille — ${escapeHtml(form.name)}</h4>
+        <p class="muted small"><strong>${escapeHtml(form.ability || "")}</strong> — ${escapeHtml(form.summary)}</p>
+        ${form.id === "syl_form_clairiere" ? `<p class="muted small">La clairière choisie en préparation (ci-dessus) s’applique à ton armée.</p>` : ""}</div>`,
+    );
+  }
+
+  if (tr && th && !th.destroyed && showPowerFullForPhase(tr, ph, b)) {
+    const uo = getUnitById(th.catalogId);
+    if (
+      !tr.allowedHeroCatalogIds?.length ||
+      (uo && tr.allowedHeroCatalogIds.includes(uo.id))
+    ) {
+      parts.push(
+        `<div class="panel-inner sylvaneth-encart sylvaneth-encart--tct"><h4 class="subh">Trait de commandement — ${escapeHtml(tr.name)}</h4>
+          <p class="muted small"><strong>Porteur :</strong> ${escapeHtml(uo?.name || "")} — ${escapeHtml(tr.summary)}</p></div>`,
+      );
+    }
+  }
+
+  if (ar && ah && !ah.destroyed && showPowerFullForPhase(ar, ph, b)) {
+    const ua = getUnitById(ah.catalogId);
+    if (
+      !ar.allowedHeroCatalogIds?.length ||
+      (ua && ar.allowedHeroCatalogIds.includes(ua.id))
+    ) {
+      const faineBlock =
+        ar.id === "syl_rel_faine_ages" && mine && ph.id === "hero" ?
+          (sy.faineAgesUsed ?
+            `<p class="muted small">Fiaine des âges — <strong>utilisée</strong> (1×/bataille).</p>` :
+            `<p class="sylvaneth-faine-wrap"><label class="tracker-label"><input type="checkbox" class="sylvaneth-faine-used" />
+            <strong>1×/bataille :</strong> coche quand l’aptitude a été déclenchée (puis coche l’app pour t’en souvenir).</label></p>`)
+        : ar.id === "syl_rel_faine_ages" && sy.faineAgesUsed && mine
+          ? `<p class="muted small">Fiaine des âges — déjà employée.</p>`
+          : "";
+      parts.push(
+        `<div class="panel-inner sylvaneth-encart sylvaneth-encart--rel"><h4 class="subh">Relique — ${escapeHtml(ar.name)}</h4>
+          <p class="muted small"><strong>Porteur :</strong> ${escapeHtml(ua?.name || "")} — ${escapeHtml(ar.summary)}</p>
+          ${faineBlock}</div>`,
+      );
+    }
+  }
+
+  for (const sp of SYLVANETH_SPELLS) {
+    if (!sp.phases?.includes(ph.id)) continue;
+    if (sp.playerTurnOnly && !mine) continue;
+    if (sp.id === "syl_spell_trone_vigne" || sp.id === "syl_spell_chant_arbres") {
+      if (ph.id === "hero" && mine) {
+        const isTr = sp.id === "syl_spell_trone_vigne";
+        const active = isTr ? sy.troneVigneActive : sy.chantArbresActive;
+        const cls = isTr ? "sylvaneth-trone-active" : "sylvaneth-chant-active";
+        parts.push(
+          `<div class="panel-inner sylvaneth-encart sylvaneth-encart--spell"><h4 class="subh">Sort — ${escapeHtml(sp.name)}</h4>
+            <p class="muted small">${escapeHtml(sp.summary)} (incant. ${escapeHtml(sp.cast || "—")})</p>
+            <label class="tracker-label"><input type="checkbox" class="${cls}" ${active ? "checked" : ""} /> Incantation réussie : effet actif (${isTr ? "jusqu’à ta prochaine phase héros" : "mêlée jusqu’à ta prochaine phase héros"})</label></div>`,
+        );
+      }
+    } else if (ph.id === "hero" && mine) {
+      parts.push(
+        `<div class="panel-inner sylvaneth-encart sylvaneth-encart--spell"><h4 class="subh">Sort — ${escapeHtml(sp.name)}</h4>
+          <p class="muted small">${escapeHtml(sp.summary)} (incant. ${escapeHtml(sp.cast || "—")})</p></div>`,
+      );
+    }
+  }
+  if (mine && sy.troneVigneActive && ph.id !== "hero" && ph.id !== "deployment") {
+    parts.push(
+      `<div class="panel-inner sylvaneth-encart sylvaneth-encart--spell-on"><h4 class="subh">Sort actif — Trône de vigne</h4>
+        <p class="muted small">Effet en cours jusqu’à ta prochaine phase des héros (coche retirée automatiquement au début de celle-ci).</p></div>`,
+    );
+  }
+  if (mine && sy.chantArbresActive && ph.id === "combat") {
+    parts.push(
+      `<div class="panel-inner sylvaneth-encart sylvaneth-encart--spell-on"><h4 class="subh">Sort actif — Chant des arbres (mêlée)</h4>
+        <p class="muted small">Applique le bonus de mêlée ; se termine au début de ta prochaine phase des héros.</p></div>`,
+    );
+  }
+
+  if (ph.id === "combat" && mine) {
+    const d = state.instances.find(
+      (i) => !i.destroyed && getUnitById(i.catalogId)?.id === "syl_spirit_durthu",
+    );
+    if (d) {
+      parts.push(
+        `<div class="panel-inner sylvaneth-encart sylvaneth-encart--durthu"><h4 class="subh">Esprit de Durthu — mêlée (ton tour)</h4>
+          <p class="muted small"><strong>Gardien colérique :</strong> +1 toucher cible à 3&quot; d’un bois. <strong>Duel titanesque :</strong> 1×/tour armée, 1 monstre au contact, 3+ = −1 A mêlée adverses jusqu’à la fin du tour.</p></div>`,
+      );
+    }
+  }
+  if (ph.id === "combat" && !mine) {
+    const d = state.instances.find(
+      (i) => !i.destroyed && getUnitById(i.catalogId)?.id === "syl_spirit_durthu",
+    );
+    if (d) {
+      parts.push(
+        `<div class="panel-inner sylvaneth-encart sylvaneth-encart--durthu"><h4 class="subh">Esprit de Durthu (adversaire)</h4>
+          <p class="muted small">Pense à la résolution du Duel titanesque / Gardien (warscroll) si le joueur l’applique.</p></div>`,
+      );
+    }
+  }
+
+  if ((ph.id === "hero" && mine) || (ph.id === "combat" && mine)) {
+    const k = state.instances.find(
+      (i) =>
+        !i.destroyed && getUnitById(i.catalogId)?.id === "syl_kurnoth_hunters_greatbow",
+    );
+    if (k) {
+      parts.push(
+        `<div class="panel-inner sylvaneth-encart sylvaneth-encart--kurnoth"><h4 class="subh">Chasseurs de Kurnoth</h4>
+          <p class="muted small"><strong>Envoyés de la reine :</strong> rappel objectif 6p / mêlée. <strong>Piétinement :</strong> fin de mêlée (tour ami et ennemi) — 1D par fig. par unité 1p, 4+ BM.</p></div>`,
+      );
+    }
+  }
+
+  if (ph.id === "combat" || (ph.id === "hero" && mine)) {
+    const bw = state.instances.find(
+      (i) => !i.destroyed && getUnitById(i.catalogId)?.id === "syl_branchwych",
+    );
+    if (bw) {
+      if (ph.id === "combat" && mine) {
+        parts.push(
+          `<div class="panel-inner sylvaneth-encart sylvaneth-encart--bwy"><h4 class="subh">Branchanteresse — mêlée (ton tour)</h4>
+            <p class="muted small"><strong>Furie des forêts :</strong> +1 / +1 mêlée si entièrement à 9p d’un bois (coche suivi <strong>9p bois</strong>).</p></div>`,
+        );
+      }
+      if (ph.id === "hero" && mine) {
+        parts.push(
+          `<div class="panel-inner sylvaneth-encart sylvaneth-encart--bwy-ff"><h4 class="subh">Branchanteresse — lâcher de fiel-follets</h4>
+            <p class="muted small">Sort de guerre en phase héros (voir warscroll) ; incant. 5, 9p.</p></div>`,
+        );
+      }
+    }
+  }
+
+  return parts.length ? parts.join("") : "";
+}
+
 function unitIsPriestProfile(u) {
   if (!u) return false;
   if (u.isPriest === true) return true;
@@ -919,6 +1127,8 @@ function defaultGameState() {
       syncClientId: "",
       /** Seraphon — Asterisme du Grand Plan (`ser_asterism_*`). */
       seraphonAsterismId: "",
+      sylvanethSeasonId: "",
+      sylvanethGladeId: "",
     },
     instances: [],
     battle: null,
@@ -976,6 +1186,30 @@ function loadState() {
       const sArts = getArtifactsForFaction("seraphon");
       if (s.setup.artifactId && !sArts.some((a) => a.id === s.setup.artifactId)) {
         s.setup.artifactId = sArts[0]?.id ?? "";
+      }
+    }
+    if (s.setup.sylvanethSeasonId == null) s.setup.sylvanethSeasonId = "";
+    else s.setup.sylvanethSeasonId = String(s.setup.sylvanethSeasonId);
+    if (s.setup.sylvanethGladeId == null) s.setup.sylvanethGladeId = "";
+    else s.setup.sylvanethGladeId = String(s.setup.sylvanethGladeId);
+    if (isSylvanethFactionId(s.setup.factionId)) {
+      const syForms = getFormationsForFaction("sylvaneth");
+      if (s.setup.formationId && !syForms.some((f) => f.id === s.setup.formationId)) {
+        s.setup.formationId = syForms[0]?.id ?? "";
+      }
+      const syTraits = getHeroicTraitsForFaction("sylvaneth");
+      if (s.setup.traitId && !syTraits.some((t) => t.id === s.setup.traitId)) {
+        s.setup.traitId = syTraits[0]?.id ?? "";
+      }
+      const syArts = getArtifactsForFaction("sylvaneth");
+      if (s.setup.artifactId && !syArts.some((a) => a.id === s.setup.artifactId)) {
+        s.setup.artifactId = syArts[0]?.id ?? "";
+      }
+      if (!SYLVANETH_SEASONS.some((x) => x.id === s.setup.sylvanethSeasonId)) {
+        s.setup.sylvanethSeasonId = SYLVANETH_SEASONS[0]?.id ?? "";
+      }
+      if (!SYLVANETH_GLADES.some((x) => x.id === s.setup.sylvanethGladeId)) {
+        s.setup.sylvanethGladeId = SYLVANETH_GLADES[0]?.id ?? "";
       }
     }
     if (Array.isArray(data.instances)) {
@@ -1053,6 +1287,20 @@ function loadState() {
           if (typeof s.battle.seraphon.coatlUsed !== "boolean")
             s.battle.seraphon.coatlUsed = false;
         }
+        if (!s.battle.sylvaneth) {
+          s.battle.sylvaneth = {
+            faineAgesUsed: false,
+            troneVigneActive: false,
+            chantArbresActive: false,
+          };
+        } else {
+          if (typeof s.battle.sylvaneth.faineAgesUsed !== "boolean")
+            s.battle.sylvaneth.faineAgesUsed = false;
+          if (typeof s.battle.sylvaneth.troneVigneActive !== "boolean")
+            s.battle.sylvaneth.troneVigneActive = false;
+          if (typeof s.battle.sylvaneth.chantArbresActive !== "boolean")
+            s.battle.sylvaneth.chantArbresActive = false;
+        }
       }
     }
     const battleActive = isPersistedBattleActive(s.battle);
@@ -1124,6 +1372,8 @@ function buildPresetFromCurrentState(label) {
     playerName: state.setup.playerName || "",
     partyHost: state.setup.partyHost || "",
     seraphonAsterismId: state.setup.seraphonAsterismId || "",
+    sylvanethSeasonId: state.setup.sylvanethSeasonId || "",
+    sylvanethGladeId: state.setup.sylvanethGladeId || "",
     instances,
   };
 }
@@ -1173,13 +1423,18 @@ function applyArmyPreset(preset) {
       const looksSeraphon = (u0?.keywords || []).some(
         (k) => String(k).toUpperCase() === "SERAPHON",
       );
+      const looksSylvaneth = (u0?.keywords || []).some(
+        (k) => String(k).toUpperCase() === "SYLVANETH",
+      );
       state.setup.factionId = looksIronjawz
         ? "peaux_vertes"
         : looksSoulblight
           ? "vampires"
-          : looksSeraphon
-            ? "seraphon"
-            : "khorne";
+          : looksSylvaneth
+            ? "sylvaneth"
+            : looksSeraphon
+              ? "seraphon"
+              : "khorne";
     }
     fEntry = FACTIONS.find((f) => f.id === state.setup.factionId);
   }
@@ -1232,6 +1487,22 @@ function applyArmyPreset(preset) {
     state.setup.seraphonAsterismId = "";
   }
 
+  if (isSylvanethFactionId(pfid)) {
+    state.setup.sylvanethSeasonId =
+      preset.sylvanethSeasonId &&
+      SYLVANETH_SEASONS.some((s) => s.id === preset.sylvanethSeasonId)
+        ? preset.sylvanethSeasonId
+        : SYLVANETH_SEASONS[0]?.id || "";
+    state.setup.sylvanethGladeId =
+      preset.sylvanethGladeId &&
+      SYLVANETH_GLADES.some((g) => g.id === preset.sylvanethGladeId)
+        ? preset.sylvanethGladeId
+        : SYLVANETH_GLADES[0]?.id || "";
+  } else {
+    state.setup.sylvanethSeasonId = "";
+    state.setup.sylvanethGladeId = "";
+  }
+
   state.instances = nextInstances;
   state.setup.traitHeroInstanceId =
     (preset.traitHeroInstanceId &&
@@ -1269,6 +1540,14 @@ function buildSetupArmyRecapHtml() {
     h += `<li><strong>${chosen ? escapeHtml(chosen.name) : "—"}</strong><p class="muted small setup-recap-line">${chosen ? escapeHtml(chosen.summary) : ""}</p>`;
     h += `<p class="muted small setup-recap-line"><em>Poursuivre (3e manche) :</em> ${chosen ? escapeHtml(chosen.pursueCondition || "") : ""}</p></li>`;
     h += `</ul><p class="muted small setup-recap-line">${escapeHtml(SERAPHON_POURSUIVRE_INTRO)} Voir la liste des conditions pour chaque Asterisme dans les choix ci-dessus.</p></div>`;
+  }
+  if (isSylvanethFactionId(fid)) {
+    const ss = getSylvanethSeasonById(state.setup.sylvanethSeasonId);
+    const gg = getSylvanethGladeById(state.setup.sylvanethGladeId);
+    h += '<div class="setup-recap-col setup-recap-col--sylvaneth"><h3 class="setup-recap-sub">Sylvaneth — saison &amp; clairière</h3><ul class="setup-recap-list">';
+    h += `<li><strong>Saison</strong> — ${ss ? escapeHtml(ss.name) : "—"}<p class="muted small setup-recap-line">${ss ? escapeHtml(ss.setupRecap || ss.summary) : ""}</p></li>`;
+    h += `<li><strong>Clairière</strong> — ${gg ? escapeHtml(gg.name) : "—"}<p class="muted small setup-recap-line">${gg ? escapeHtml(gg.setupRecap || gg.summary) : ""}</p></li>`;
+    h += `</ul><p class="muted small">Chenfront a été retiré de la liste. Le suivi d’unité propose une coche <strong>9p d’un bois</strong> pour les bonus de position.</p></div>`;
   }
   h += `<div class="setup-recap-col"><h3 class="setup-recap-sub">${
     isSeraphonFactionId(fid) ?
@@ -1481,6 +1760,13 @@ function isHeroEligibleForTraitArtifact(inst) {
   if (!u) return false;
   const kws = u.keywords || [];
   return !kws.some((x) => String(x).toUpperCase() === "UNIQUE");
+}
+
+/** Restreint porteur relique / trait (ex. sorcier → Branchanteresse seulement). */
+function heroMatchesAllowlistCatalogIds(inst, allowedIds) {
+  if (!allowedIds?.length) return true;
+  const u = getUnitById(inst.catalogId);
+  return !!(u && allowedIds.includes(u.id));
 }
 
 function persist() {
@@ -1890,6 +2176,17 @@ function getCarnosaurMassiveJawAttacks(inst, u) {
   return lost >= 10 ? "2" : "3";
 }
 
+/** Esprit de Durthu — Épée gardienne : 4 A, 3 si 10+ blessures allouées (PV rest. ≤4 sur 14). */
+function getSylDurthuEpeeAttacks(inst, u) {
+  if (u?.id !== "syl_spirit_durthu") return null;
+  const maxW = getWoundsMaxInst(inst, u);
+  const cur = inst?.woundsCurrent;
+  if (maxW == null) return "4";
+  if (cur === "" || cur == null) return "4";
+  const lost = maxW - Number(cur);
+  return lost >= 10 ? "3" : "4";
+}
+
 function waaaghVictoryMeleeAttackBonus(inst, u, w) {
   if (!inst || inst.destroyed || !u || !w) return 0;
   if (u.id !== "ij_gordrakk" && u.id !== "ij_megaboss") return 0;
@@ -2096,6 +2393,9 @@ function formatAttacksCellWithRage(w, inst, u, rageBonus) {
   if (w.dynamicAttacks === "carnosaur_machoires") {
     atkCell = String(getCarnosaurMassiveJawAttacks(inst, u));
   }
+  if (w.dynamicAttacks === "syl_durthu_epee") {
+    atkCell = String(getSylDurthuEpeeAttacks(inst, u));
+  }
   if (!rageBonus || inst.destroyed) return atkCell;
   if (w.dynamicAttacks === "belakor_lame") {
     const n = parseInt(atkCell, 10);
@@ -2110,6 +2410,10 @@ function formatAttacksCellWithRage(w, inst, u, rageBonus) {
     if (Number.isFinite(n)) return `${n} → ${n + 1}`;
   }
   if (w.dynamicAttacks === "carnosaur_machoires") {
+    const n = parseInt(atkCell, 10);
+    if (Number.isFinite(n)) return `${n} → ${n + 1}`;
+  }
+  if (w.dynamicAttacks === "syl_durthu_epee") {
     const n = parseInt(atkCell, 10);
     if (Number.isFinite(n)) return `${n} → ${n + 1}`;
   }
@@ -2251,6 +2555,7 @@ function ensureInstanceTracking(inst) {
   const sme = Number(inst.soulblightMachineMortisEnergy);
   if (!Number.isFinite(sme) || sme < 1) inst.soulblightMachineMortisEnergy = 1;
   else if (sme > 6) inst.soulblightMachineMortisEnergy = 6;
+  if (typeof inst.sylWithin9OfWood !== "boolean") inst.sylWithin9OfWood = false;
   if (
     inst.chevalierTertresBaselineWounds !== "" &&
     inst.chevalierTertresBaselineWounds != null &&
@@ -2259,6 +2564,10 @@ function ensureInstanceTracking(inst) {
     const n = Number(inst.chevalierTertresBaselineWounds);
     inst.chevalierTertresBaselineWounds = Number.isFinite(n) ? n : "";
   }
+}
+
+function sylvanethWood9ColumnActive() {
+  return isSylvanethFactionContext();
 }
 
 function soulblightVolonteTrackerColumnActive() {
@@ -2375,6 +2684,7 @@ function buildPhaseTrackerHtml(ph, b) {
   const showSbGardeCol = soulblightGardeRoyaleColumnActive();
   const showSbRoiCritCol = soulblightRoiCritColumnActive();
   const showSbSaintCol = soulblightSaintMassacreColumnActive();
+  const showSylWoodCol = sylvanethWood9ColumnActive();
   const colSpan =
     6 +
     (showBonusCol ? 1 : 0) +
@@ -2383,7 +2693,8 @@ function buildPhaseTrackerHtml(ph, b) {
     (showVolonteCol ? 1 : 0) +
     (showSbGardeCol ? 1 : 0) +
     (showSbRoiCritCol ? 1 : 0) +
-    (showSbSaintCol ? 1 : 0);
+    (showSbSaintCol ? 1 : 0) +
+    (showSylWoodCol ? 1 : 0);
 
   let rows = "";
   for (const inst of instanceList) {
@@ -2424,6 +2735,10 @@ function buildPhaseTrackerHtml(ph, b) {
     if (showSbGardeCol) rows += buildSoulblightGardeRoyaleCell(inst, u, !myTurn);
     if (showSbRoiCritCol) rows += buildSoulblightRoiCritCell(inst, u, !myTurn);
     if (showSbSaintCol) rows += buildSoulblightSaintMassacreCell(inst, u, !myTurn);
+    if (showSylWoodCol) {
+      const dis = inst.destroyed === true || tactDis;
+      rows += `<td class="tracker-check"><label class="tracker-label"><input type="checkbox" class="tracker-syl-wood-9" data-iid="${inst.id}" ${inst.sylWithin9OfWood ? "checked" : ""} ${dis ? "disabled" : ""} title="Sylvaneth : entièrement / à moins de 9p d&apos;un bois luxuriant ou Bois sauvage (selon règles &amp; warscroll)" /> 9p bois</label></td>`;
+    }
     rows += `</tr>`;
   }
 
@@ -2455,6 +2770,9 @@ function buildPhaseTrackerHtml(ph, b) {
     : "";
   const theadSbSaint = showSbSaintCol
     ? `<th class="tracker-bonus-col" title="Saint du massacre">St. massacre</th>`
+    : "";
+  const theadSylWood = showSylWoodCol
+    ? `<th class="tracker-bonus-col" title="Sylvaneth — bois (9p)">9p bois</th>`
     : "";
 
   let consangRageEncart = "";
@@ -2497,6 +2815,7 @@ function buildPhaseTrackerHtml(ph, b) {
           ${theadSbGarde}
           ${theadSbRoiCrit}
           ${theadSbSaint}
+          ${theadSylWood}
         </tr></thead>
         <tbody>${rows || emptyCombatMsg || `<tr><td colspan="${colSpan}" class="muted">Aucune unité dans la liste.</td></tr>`}</tbody>
       </table>
@@ -2780,7 +3099,9 @@ function renderSetup() {
             ? "Trait héroïque (Seigneurs Ruinemânes)"
             : isSeraphonFactionId(factionId)
               ? "Discipline céleste (trait héroïque)"
-              : "Trait héroïque";
+              : isSylvanethFactionId(factionId)
+                ? "Trait de commandement (Sylvaneth)"
+                : "Trait héroïque";
   }
   if (setupHeadingArtifact) {
     setupHeadingArtifact.textContent =
@@ -2792,13 +3113,81 @@ function renderSetup() {
             ? "Artefact d’armée"
             : isSeraphonFactionId(factionId)
               ? "Trésor des Anciens (artefact)"
-              : "Artefact";
+              : isSylvanethFactionId(factionId)
+                ? "Relique d’arôme (Sylvaneth)"
+                : "Artefact";
   }
   const setupFormationTitle = document.getElementById("setup-formation-title");
   if (setupFormationTitle) {
-    setupFormationTitle.textContent = isSeraphonFactionId(factionId)
-      ? "Hôte d’étoile (formation de bataille)"
-      : "Formation de bataille";
+    setupFormationTitle.textContent = isSylvanethFactionId(factionId)
+      ? "Trait de bataille (Sylvaneth)"
+      : isSeraphonFactionId(factionId)
+        ? "Hôte d’étoile (formation de bataille)"
+        : "Formation de bataille";
+  }
+  const setupSylvanethBlock = document.getElementById("setup-sylvaneth-options");
+  const setupSylvanethSeason = document.getElementById("setup-sylvaneth-season-list");
+  const setupSylvanethGlade = document.getElementById("setup-sylvaneth-glad-list");
+  if (setupSylvanethBlock) {
+    setupSylvanethBlock.hidden = !isSylvanethFactionId(factionId);
+  }
+  if (isSylvanethFactionId(factionId) && setupSylvanethSeason) {
+    if (!SYLVANETH_SEASONS.some((s) => s.id === state.setup.sylvanethSeasonId)) {
+      state.setup.sylvanethSeasonId = SYLVANETH_SEASONS[0]?.id || "";
+    }
+    setupSylvanethSeason.innerHTML = "";
+    for (const s of SYLVANETH_SEASONS) {
+      const lab = document.createElement("label");
+      lab.className = "radio-line";
+      const r = document.createElement("input");
+      r.type = "radio";
+      r.name = "sylvaneth-season";
+      r.value = s.id;
+      r.checked = state.setup.sylvanethSeasonId === s.id;
+      r.addEventListener("change", () => {
+        state.setup.sylvanethSeasonId = s.id;
+        persist();
+        const recap = document.getElementById("setup-army-recap-body");
+        if (recap) recap.innerHTML = buildSetupArmyRecapHtml();
+      });
+      lab.appendChild(r);
+      const one = String(s.summary || "").replace(/\s+/g, " ");
+      lab.appendChild(
+        document.createTextNode(
+          ` ${s.name} — ${one.slice(0, 100)}${one.length > 100 ? "…" : ""}`,
+        ),
+      );
+      setupSylvanethSeason.appendChild(lab);
+    }
+  }
+  if (isSylvanethFactionId(factionId) && setupSylvanethGlade) {
+    if (!SYLVANETH_GLADES.some((g) => g.id === state.setup.sylvanethGladeId)) {
+      state.setup.sylvanethGladeId = SYLVANETH_GLADES[0]?.id || "";
+    }
+    setupSylvanethGlade.innerHTML = "";
+    for (const g of SYLVANETH_GLADES) {
+      const lab = document.createElement("label");
+      lab.className = "radio-line";
+      const r = document.createElement("input");
+      r.type = "radio";
+      r.name = "sylvaneth-glad";
+      r.value = g.id;
+      r.checked = state.setup.sylvanethGladeId === g.id;
+      r.addEventListener("change", () => {
+        state.setup.sylvanethGladeId = g.id;
+        persist();
+        const recap = document.getElementById("setup-army-recap-body");
+        if (recap) recap.innerHTML = buildSetupArmyRecapHtml();
+      });
+      lab.appendChild(r);
+      const one = String(g.summary || "").replace(/\s+/g, " ");
+      lab.appendChild(
+        document.createTextNode(
+          ` ${g.name} — ${one.slice(0, 100)}${one.length > 100 ? "…" : ""}`,
+        ),
+      );
+      setupSylvanethGlade.appendChild(lab);
+    }
   }
   const setupSeraphonBlock = document.getElementById("setup-seraphon-asterism");
   const setupSeraphonList = document.getElementById(
@@ -3039,11 +3428,29 @@ function renderSetup() {
   }
 
   const heroesForUpgrade = state.instances.filter(isHeroEligibleForTraitArtifact);
+  const traitDef = getHeroicTraitsForFaction(factionId).find(
+    (t) => t.id === state.setup.traitId,
+  );
+  const artDef = getArtifactsForFaction(factionId).find(
+    (a) => a.id === state.setup.artifactId,
+  );
+  const heroesForTrait = heroesForUpgrade.filter((h) =>
+    heroMatchesAllowlistCatalogIds(h, traitDef?.allowedHeroCatalogIds),
+  );
+  const heroesForArt = heroesForUpgrade.filter((h) =>
+    heroMatchesAllowlistCatalogIds(h, artDef?.allowedHeroCatalogIds),
+  );
   let heroUpgradeSelectionCleared = false;
   function fillHeroSelect(select, currentId, setupKey) {
     if (!select) return;
     select.innerHTML = '<option value="">— Choisir —</option>';
-    for (const h of heroesForUpgrade) {
+    const list =
+      setupKey === "trait"
+        ? heroesForTrait
+        : setupKey === "artifact"
+          ? heroesForArt
+          : heroesForUpgrade;
+    for (const h of list) {
       const u = getUnitById(h.catalogId);
       const o = document.createElement("option");
       o.value = h.id;
@@ -3237,6 +3644,7 @@ function initBattleFromSetup() {
     remoteUnitEffectsByClient: {},
     myOutgoingUnitEffects: [],
     seraphon: { itzlPursue: false, coatlUsed: false },
+    sylvaneth: { faineAgesUsed: false, troneVigneActive: false, chantArbresActive: false },
   };
   persist();
   showBattle();
@@ -3349,6 +3757,10 @@ function advancePhase() {
         if (!bf.expiresNextHero) return true;
         return bf.castTurn >= b.playerTurnNumber;
       });
+    }
+    if (isSylvanethFactionContext() && b.sylvaneth) {
+      b.sylvaneth.troneVigneActive = false;
+      b.sylvaneth.chantArbresActive = false;
     }
   }
   persist();
@@ -3700,6 +4112,21 @@ function buildPhaseArmyPowersHtml(ph, b) {
     }
   }
 
+  if (isSylvanethFactionContext() && b) {
+    const season = getSylvanethSeasonById(state.setup.sylvanethSeasonId);
+    if (season && showPowerFullForPhase(season, ph, b)) {
+      parts.push(
+        `<li><strong>Saison</strong> — ${escapeHtml(season.name)} : ${escapeHtml(season.summary)}</li>`,
+      );
+    }
+    const glade = getSylvanethGladeById(state.setup.sylvanethGladeId);
+    if (glade && showPowerFullForPhase(glade, ph, b)) {
+      parts.push(
+        `<li><strong>Clairière</strong> — ${escapeHtml(glade.name)} : ${escapeHtml(glade.summary)}</li>`,
+      );
+    }
+  }
+
   const form = getFormationById(state.setup.formationId);
   const traitsFaction = getHeroicTraitsForFaction(fid);
   const artsFaction = getArtifactsForFaction(fid);
@@ -3760,7 +4187,8 @@ function buildPhaseArmyPowersHtml(ph, b) {
   const blockTitle =
     isPeauxVertesFactionContext() ||
     isSoulblightFactionContext() ||
-    isSeraphonFactionContext()
+    isSeraphonFactionContext() ||
+    isSylvanethFactionContext()
       ? "Traits d’armée, formation, trait, artefact (cette phase)"
       : "Formation, trait, artefact (cette phase)";
   return `<h4 class="subh phase-sub">${escapeHtml(blockTitle)}</h4><ul class="phase-reasons phase-army-powers">${parts.join("")}</ul>`;
@@ -3776,7 +4204,9 @@ function buildMeleeProximityRecapHtml() {
           ? MELEE_PROXIMITY_RECAP_SOULBLIGHT
           : isSeraphonFactionContext()
             ? MELEE_PROXIMITY_RECAP_SERAPHON
-            : null;
+            : isSylvanethFactionContext()
+              ? MELEE_PROXIMITY_RECAP_SYLVANETH
+              : null;
   if (!rows?.length) return "";
   let h = `<details class="melee-proximity-recap">`;
   h += `<summary class="melee-proximity-recap-summary">Bonus de proximité (mêlée) — récapitulatif</summary>`;
@@ -4542,7 +4972,8 @@ function renderBattle() {
       isPlayerTurn(b) &&
       (isKhorneFactionContext() ||
         isPeauxVertesFactionContext() ||
-        isSoulblightFactionContext())
+        isSoulblightFactionContext() ||
+        isSylvanethFactionContext())
     ) {
       html += buildMeleeProximityRecapHtml();
     }
@@ -4550,6 +4981,7 @@ function renderBattle() {
     html += buildIronjawzBattleEncartsHtml(ph, b);
     html += buildSoulblightBattleEncartsHtml(ph, b);
     html += buildSeraphonBattleEncartsHtml(ph, b);
+    html += buildSylvanethBattleEncartsHtml(ph, b);
     html += `<div class="phase-drawer-stack">`;
     html += wrapPhaseDrawer(
       "Récap unités & rappels de phase",
@@ -5135,6 +5567,11 @@ function renderDetailPanel(instanceId) {
     h += `<p class="muted small">Mâchoires massives du Carnosaure (selon PV saisis) : <strong>${st}</strong> attaques — stigmates : 2 A si 10+ dégâts alloués (≤4 PV restants sur 14).</p>`;
   }
 
+  if (u.id === "syl_spirit_durthu" && b) {
+    const st = getSylDurthuEpeeAttacks(inst, u);
+    h += `<p class="muted small">Épée gardienne (selon PV saisis) : <strong>${st}</strong> attaques — stigmates : 3 A si 10+ blessures allouées (≤4 PV restants sur 14).</p>`;
+  }
+
   if (u.stigmates?.length) {
     h += `<h4>Stigmates</h4><ul class="abil-list">`;
     for (const s of u.stigmates) {
@@ -5554,6 +5991,27 @@ el.viewBattle?.addEventListener("change", (e) => {
     }
     return;
   }
+  if (
+    t.classList.contains("sylvaneth-faine-used") ||
+    t.classList.contains("sylvaneth-trone-active") ||
+    t.classList.contains("sylvaneth-chant-active")
+  ) {
+    if (!isSylvanethFactionContext() || !state.battle) return;
+    const sy = (state.battle.sylvaneth = state.battle.sylvaneth || {
+      faineAgesUsed: false,
+      troneVigneActive: false,
+      chantArbresActive: false,
+    });
+    if (t.classList.contains("sylvaneth-faine-used")) sy.faineAgesUsed = t.checked;
+    if (t.classList.contains("sylvaneth-trone-active"))
+      sy.troneVigneActive = t.checked;
+    if (t.classList.contains("sylvaneth-chant-active"))
+      sy.chantArbresActive = t.checked;
+    persist();
+    maybeSchedulePartySnapshotPush();
+    renderBattle();
+    return;
+  }
   if (t.classList.contains("tracker-pv")) {
     const iidPv = t.dataset?.iid;
     if (!iidPv) return;
@@ -5642,6 +6100,13 @@ el.viewBattle?.addEventListener("change", (e) => {
 
   if (t.classList.contains("tracker-melee")) {
     inst.inMelee = t.checked;
+    persist();
+    renderBattle();
+    return;
+  }
+  if (t.classList.contains("tracker-syl-wood-9")) {
+    ensureInstanceTracking(inst);
+    inst.sylWithin9OfWood = t.checked;
     persist();
     renderBattle();
     return;
